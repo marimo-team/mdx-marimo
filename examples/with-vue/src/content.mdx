@@ -1,0 +1,29 @@
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["wigglystuff"]
+```
+
+# Vite Vue MDX marimo island
+
+This page is MDX compiled by Vite with Vue 3 and `@mdx-js/vue`. The marimo fence below is rendered as a custom element.
+
+```python marimo output=false
+import marimo as mo
+from wigglystuff import Slider2D
+```
+
+```python marimo
+slider = mo.ui.slider(1, 10, label="items")
+slider
+```
+
+```python marimo
+mo.md(f"The slider is set to **{slider.value}**.")
+```
+
+## Third-party widget
+
+```python marimo server-output=false
+slider_2d = mo.ui.anywidget(Slider2D(x=0.5, y=0.5, x_bounds=(0.0, 1.0), y_bounds=(0.0, 1.0)))
+slider_2d
+```

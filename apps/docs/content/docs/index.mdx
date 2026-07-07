@@ -1,0 +1,52 @@
+---
+title: Fumadocs with marimo
+description: Compile marimo code fences into MDX islands.
+---
+
+`@marimo-team/mdx-marimo` lets Fumadocs turn marimo fences into MDX islands. Add the preset to `source.config.ts` and write marimo fences in MDX.
+
+```ts title="source.config.ts"
+import { marimoMdx } from "@marimo-team/mdx-marimo/preset";
+
+export default defineConfig({
+  mdxOptions: {
+    remarkPlugins: [marimoMdx()],
+  },
+});
+```
+
+Write a normal MDX page with marimo fences.
+
+````mdx
+```python marimo
+import marimo as mo
+
+slider = mo.ui.slider(1, 10, label="items")
+slider
+```
+
+```python marimo
+mo.md(f"The slider is set to **{slider.value}**.")
+```
+````
+
+The compiled page emits `<marimo-mdx-island>` elements with one extracted `MarimoOutput` payload per cell.
+
+```python marimo
+import marimo as mo
+
+slider = mo.ui.slider(1, 10, label="items")
+slider
+```
+
+```python marimo
+mo.md(f"The slider is set to **{slider.value}**.")
+```
+
+## Static export
+
+The docs app uses `next build` with `output: "export"`. Set `NEXT_PUBLIC_BASE_PATH` when the site is served from a GitHub Pages project path.
+
+```bash
+NEXT_PUBLIC_BASE_PATH=/mdx-marimo pnpm docs:build
+```

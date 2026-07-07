@@ -1,0 +1,10 @@
+@import "@marimo-team/mdx-marimo/styles.css";
+
+:root {
+  --ifm-color-primary: #2563eb;
+  --ifm-code-font-size: 0.9rem;
+}
+
+.marimo-island-host {
+  margin: 1rem 0;
+}

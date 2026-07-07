@@ -1,0 +1,22 @@
+{
+  "name": "@marimo-team/mdx-marimo-example-nuxt",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "nuxt build",
+    "build:deps": "pnpm --filter @marimo-team/mdx-marimo build",
+    "prebuild": "pnpm run build:deps",
+    "dev": "nuxt dev --host 127.0.0.1 --port 4106",
+    "predev": "pnpm run build:deps",
+    "generate": "nuxt generate",
+    "pregenerate": "pnpm run build:deps",
+    "prepare": "pnpm run build:deps && nuxt prepare"
+  },
+  "dependencies": {
+    "@marimo-team/mdx-marimo": "workspace:*",
+    "@mdx-js/vue": "^3.1.1",
+    "nuxt": "4.3.1",
+    "vue": "3.5.38"
+  }
+}

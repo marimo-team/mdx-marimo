@@ -1,0 +1,25 @@
+{
+  "name": "@marimo-team/mdx-marimo-example-next",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "next build --webpack",
+    "build:deps": "pnpm --filter @marimo-team/mdx-marimo build",
+    "prebuild": "pnpm run build:deps",
+    "dev": "next dev --webpack -H 127.0.0.1 -p 4104",
+    "predev": "pnpm run build:deps",
+    "start": "next start -H 127.0.0.1 -p 4104",
+    "prestart": "pnpm run build:deps"
+  },
+  "dependencies": {
+    "@marimo-team/mdx-marimo": "workspace:*",
+    "@mdx-js/loader": "^3.1.1",
+    "@mdx-js/react": "^3.1.1",
+    "@next/mdx": "16.2.10",
+    "@types/mdx": "^2.0.14",
+    "next": "16.2.10",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  }
+}

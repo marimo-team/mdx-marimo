@@ -1,0 +1,25 @@
+:where(.marimo-island-host) {
+  box-sizing: border-box;
+  margin-block: var(--_mdxm-margin-block);
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+:where(.marimo-island-host) > :first-child {
+  margin-top: 0;
+}
+
+:where(.marimo-island-host) > :last-child {
+  margin-bottom: 0;
+}
+
+:where(.marimo-island-host) :where(marimo-island, marimo-cell-output) {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+:where(.marimo-island-host) > marimo-island.marimo {
+  display: contents;
+}

@@ -1,0 +1,45 @@
+@import "tailwindcss";
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
+@import "@marimo-team/mdx-marimo/styles.css";
+
+html {
+  scrollbar-gutter: stable;
+}
+
+body {
+  background: var(--color-fd-background);
+}
+
+.marimo-island-host {
+  --marimo-island-background: var(--color-fd-background);
+  --marimo-island-foreground: var(--color-fd-foreground);
+  --marimo-island-surface: var(--color-fd-card);
+  --marimo-island-muted-surface: var(--color-fd-muted);
+  --marimo-island-muted-foreground: var(--color-fd-muted-foreground);
+  --marimo-island-border: var(--color-fd-border);
+  --marimo-island-accent: var(--color-fd-primary);
+  --marimo-island-accent-foreground: var(--color-fd-primary-foreground);
+  --marimo-island-focus-ring: var(--color-fd-primary);
+  --marimo-island-code-background: var(--color-fd-secondary);
+  --marimo-island-code-foreground: var(--color-fd-foreground);
+  --marimo-island-error-background: color-mix(
+    in srgb,
+    var(--color-fd-error) 6%,
+    var(--color-fd-background)
+  );
+  --marimo-island-error-border: color-mix(
+    in srgb,
+    var(--color-fd-error) 42%,
+    var(--color-fd-border)
+  );
+  --marimo-island-error-foreground: var(--color-fd-foreground);
+  --marimo-island-error-accent: var(--color-fd-error);
+  --marimo-island-radius: 0.5rem;
+  --marimo-island-margin-block: 1rem;
+}
+
+html > body[data-scroll-locked] {
+  margin-right: 0px !important;
+  --removed-body-scroll-bar-size: 0px !important;
+}

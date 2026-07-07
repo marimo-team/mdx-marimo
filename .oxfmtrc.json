@@ -1,0 +1,11 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "ignorePatterns": [
+    "apps/docs/.marimo-cache",
+    "apps/docs/.next",
+    "apps/docs/.source",
+    "apps/docs/content/docs/**/__marimo__",
+    "apps/docs/content/docs/tutorials/**/*.mdx",
+    "apps/docs/out"
+  ]
+}

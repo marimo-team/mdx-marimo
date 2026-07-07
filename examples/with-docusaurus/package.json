@@ -1,0 +1,22 @@
+{
+  "name": "@marimo-team/mdx-marimo-example-docusaurus",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "docusaurus build",
+    "build:deps": "pnpm --filter @marimo-team/mdx-marimo build",
+    "prebuild": "pnpm run build:deps",
+    "dev": "docusaurus start --host 127.0.0.1 --port 4105",
+    "predev": "pnpm run build:deps",
+    "serve": "docusaurus serve --host 127.0.0.1 --port 4105",
+    "preserve": "pnpm run build:deps"
+  },
+  "dependencies": {
+    "@docusaurus/core": "3.10.1",
+    "@docusaurus/preset-classic": "3.10.1",
+    "@marimo-team/mdx-marimo": "workspace:*",
+    "@mdx-js/react": "^3.1.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  }
+}

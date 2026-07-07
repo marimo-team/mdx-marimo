@@ -1,0 +1,72 @@
+:where(.marimo-island-host) {
+  margin-block: var(--_mdxm-margin-block);
+  color: var(--_mdxm-foreground);
+  color-scheme: light;
+  --_mdxm-background: var(--marimo-island-background, Canvas);
+  --_mdxm-foreground: var(--marimo-island-foreground, CanvasText);
+  --_mdxm-surface: var(--marimo-island-surface, Field);
+  --_mdxm-muted-surface: var(
+    --marimo-island-muted-surface,
+    color-mix(in srgb, var(--_mdxm-foreground) 6%, var(--_mdxm-background))
+  );
+  --_mdxm-raised-surface: color-mix(in srgb, var(--_mdxm-foreground) 3%, var(--_mdxm-background));
+  --_mdxm-muted-foreground: var(
+    --marimo-island-muted-foreground,
+    color-mix(in srgb, var(--_mdxm-foreground) 68%, transparent)
+  );
+  --_mdxm-border: var(
+    --marimo-island-border,
+    color-mix(in srgb, var(--_mdxm-foreground) 22%, transparent)
+  );
+  --_mdxm-link: var(--marimo-island-accent, LinkText);
+  --_mdxm-accent: var(--marimo-island-accent, Highlight);
+  --_mdxm-accent-foreground: var(--marimo-island-accent-foreground, HighlightText);
+  --_mdxm-focus-ring: var(--marimo-island-focus-ring, var(--_mdxm-accent));
+  --_mdxm-code-background: var(--marimo-island-code-background, var(--_mdxm-muted-surface));
+  --_mdxm-code-foreground: var(--marimo-island-code-foreground, var(--_mdxm-foreground));
+  --_mdxm-code-border: var(--_mdxm-border);
+  --_mdxm-hover-background: color-mix(in srgb, var(--_mdxm-foreground) 8%, transparent);
+  --_mdxm-error-background: var(
+    --marimo-island-error-background,
+    color-mix(in srgb, #dc2626 6%, var(--_mdxm-background))
+  );
+  --_mdxm-error-border: var(
+    --marimo-island-error-border,
+    color-mix(in srgb, #dc2626 42%, var(--_mdxm-border))
+  );
+  --_mdxm-error-foreground: var(--marimo-island-error-foreground, var(--_mdxm-foreground));
+  --_mdxm-error-accent: var(--marimo-island-error-accent, #dc2626);
+  --_mdxm-radius: var(--marimo-island-radius, 0.5rem);
+  --_mdxm-margin-block: var(--marimo-island-margin-block, 1rem);
+}
+
+:where(.marimo-island-host[data-marimo-theme="dark"]) {
+  color-scheme: dark;
+  --_mdxm-background: var(--marimo-island-background, #09090b);
+  --_mdxm-foreground: var(--marimo-island-foreground, #e4e4e7);
+  --_mdxm-surface: var(--marimo-island-surface, #18181b);
+  --_mdxm-muted-surface: var(
+    --marimo-island-muted-surface,
+    color-mix(in srgb, var(--_mdxm-foreground) 10%, var(--_mdxm-background))
+  );
+  --_mdxm-border: var(--marimo-island-border, rgba(161, 161, 170, 0.34));
+  --_mdxm-muted-foreground: var(
+    --marimo-island-muted-foreground,
+    color-mix(in srgb, var(--_mdxm-foreground) 68%, transparent)
+  );
+  --_mdxm-code-background: var(--marimo-island-code-background, #18181b);
+  --_mdxm-error-background: var(
+    --marimo-island-error-background,
+    color-mix(in srgb, #f87171 8%, var(--_mdxm-background))
+  );
+  --_mdxm-error-border: var(
+    --marimo-island-error-border,
+    color-mix(in srgb, #f87171 42%, var(--_mdxm-border))
+  );
+  --_mdxm-error-accent: var(--marimo-island-error-accent, #fca5a5);
+  --_mdxm-error-foreground: var(--marimo-island-error-foreground, var(--_mdxm-foreground));
+}
+
+:where(.marimo-island-host[data-marimo-theme="light"]) {
+  color-scheme: light;
+}

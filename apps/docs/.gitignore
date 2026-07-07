@@ -1,0 +1,5 @@
+.marimo-cache
+.next
+.source
+out
+content/docs/**/__marimo__

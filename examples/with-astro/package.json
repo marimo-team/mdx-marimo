@@ -1,0 +1,19 @@
+{
+  "name": "@marimo-team/mdx-marimo-example-astro",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "astro build",
+    "build:deps": "pnpm --filter @marimo-team/mdx-marimo build",
+    "prebuild": "pnpm run build:deps",
+    "dev": "astro dev --host 127.0.0.1 --port 4103",
+    "predev": "pnpm run build:deps"
+  },
+  "dependencies": {
+    "@astrojs/markdown-remark": "^7.2.1",
+    "@astrojs/mdx": "^7.0.2",
+    "@marimo-team/mdx-marimo": "workspace:*",
+    "astro": "^7.0.6"
+  }
+}

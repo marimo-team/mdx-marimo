@@ -1,0 +1,54 @@
+---
+id: controls
+title: Controls
+---
+
+```marimo-config
+requires-python = ">=3.11"
+dependencies = ["wigglystuff", "marimo[sql]"]
+```
+
+# Controls
+
+Each docs page can own its own marimo cells. This page uses a separate slider and dependent output.
+
+```python marimo output=false
+import marimo as mo
+from wigglystuff import Slider2D
+```
+
+```python marimo
+power = mo.ui.slider(1, 6, label="power")
+power
+```
+
+```python marimo
+mo.md(f"Two to the power of {power.value} is **{2 ** power.value}**.")
+```
+
+## Tables
+
+```python marimo
+import polars as pl
+
+df = pl.from_dicts([{'x': i, 'y': i**power.value} for i in range(100)])
+df
+```
+
+## Charts
+
+```python marimo
+import altair as alt
+
+chart = alt.Chart(df).mark_line().encode(
+    x='x',
+    y='y',
+)
+chart
+```
+
+## Queries
+
+```sql marimo
+select 2*x+42 from df
+```
