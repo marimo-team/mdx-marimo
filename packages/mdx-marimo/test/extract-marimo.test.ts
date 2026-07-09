@@ -135,7 +135,7 @@ describe("extract-marimo.py", () => {
     const parsed = JSON.parse(result.stdout) as MarimoPageResult;
     expect(parsed.outputs).toHaveLength(2);
     expect(parsed.outputs[0]).toMatchObject({
-      appId: "mdx-933f0d1483dc",
+      appId: "mdx-882921df4723",
       cellIndex: 0,
       runtimeCellCount: 2,
     });
@@ -143,7 +143,7 @@ describe("extract-marimo.py", () => {
     expect(parsed.outputs[0]?.assets?.links).toEqual([{ href: "/style.css", rel: "stylesheet" }]);
     expect(parsed.outputs[0]?.assets?.version).toBe("0.0.test");
     expect(parsed.outputs[0]?.assets?.headTags).toEqual([
-      { tag: "marimo-filename", attrs: {}, text: "apps/docs/page.mdx" },
+      { tag: "marimo-filename", attrs: {}, text: "fixtures/page.mdx" },
     ]);
     expect(parsed.outputs[0]?.assets?.exportContext).toMatchObject({
       trusted: true,
@@ -161,8 +161,8 @@ describe("extract-marimo.py", () => {
 
 function fixtureRequest(): MarimoPageRequest {
   return {
-    filename: "apps/docs/page.mdx",
-    identity: "apps/docs/page.mdx",
+    filename: "fixtures/page.mdx",
+    identity: "fixtures/page.mdx",
     metadata: {
       pyproject: 'requires-python = ">=3.11"\ndependencies = ["wigglystuff"]',
     },

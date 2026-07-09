@@ -1,5 +1,5 @@
 .marimo-cache
-.next
 .source
-out
+.output
+dist
 content/docs/**/__marimo__

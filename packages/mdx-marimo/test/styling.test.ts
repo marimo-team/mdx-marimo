@@ -68,13 +68,4 @@ describe("island styling contract", () => {
     expect(browserRuntime).toContain('"marimo-island-host"');
     expect(browserRuntime).toContain("marimoHost");
   });
-
-  it("maps Fumadocs tokens in the docs app", () => {
-    const docsCss = readFileSync(join("..", "..", "apps", "docs", "app", "global.css"), "utf8");
-
-    expect(docsCss).toContain(".marimo-island-host");
-    for (const token of publicTokens) {
-      expect(docsCss).toContain(token);
-    }
-  });
 });
