@@ -29,6 +29,9 @@ importers:
       '@marimo-team/mdx-marimo':
         specifier: workspace:*
         version: link:../../packages/mdx-marimo
+      '@orama/orama':
+        specifier: ^3.1.18
+        version: 3.1.18
       cnfast:
         specifier: ^0.0.8
         version: 0.0.8
