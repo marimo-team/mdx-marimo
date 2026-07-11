@@ -1,3 +1,1 @@
-@import "./styling/tokens.css";
-@import "./styling/layout.css";
-@import "./styling/compatibility.css";
+@import "@marimo-team/islands-bridge/styles.css";

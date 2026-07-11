@@ -5,10 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "astro build",
-    "build:deps": "pnpm --filter @marimo-team/mdx-marimo build",
-    "prebuild": "pnpm run build:deps",
     "dev": "astro dev --host 127.0.0.1 --port 4103",
-    "predev": "pnpm run build:deps"
+    "predev": "vp run -t @marimo-team/mdx-marimo#build"
   },
   "dependencies": {
     "@astrojs/markdown-remark": "^7.2.1",

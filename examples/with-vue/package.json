@@ -5,13 +5,12 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "build:deps": "pnpm --filter @marimo-team/mdx-marimo build",
-    "prebuild": "pnpm run build:deps",
     "dev": "vite --host 127.0.0.1 --port 4102 --strictPort",
-    "predev": "pnpm run build:deps"
+    "predev": "vp run -t @marimo-team/mdx-marimo#build"
   },
   "dependencies": {
     "@marimo-team/mdx-marimo": "workspace:*",
+    "@mdx-js/rollup": "^3.1.1",
     "@mdx-js/vue": "^3.1.1",
     "@vitejs/plugin-vue": "^6.0.7",
     "vite": "^8.1.3",

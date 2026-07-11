@@ -1,15 +1,16 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "ignoreDeprecations": "6.0",
     "jsx": "react-jsx",
     "types": ["node"],
     "paths": {
-      "@marimo-team/mdx-marimo/extractor": ["./src/extractor/index.ts"],
-      "@marimo-team/mdx-marimo/preset": ["./src/preset/index.ts"],
-      "@marimo-team/mdx-marimo/remark": ["./src/remark/index.ts"],
-      "@marimo-team/mdx-marimo/schema": ["./src/schema.ts"]
+      "@marimo-team/islands-bridge": ["../islands-bridge/src/index.ts"],
+      "@marimo-team/islands-bridge/browser": ["../islands-bridge/src/browser/index.ts"],
+      "@marimo-team/islands-bridge/element": ["../islands-bridge/src/element/index.ts"],
+      "@marimo-team/islands-bridge/protocol": ["../islands-bridge/src/protocol/index.ts"],
+      "@marimo-team/mdx-marimo/node": ["./src/node/index.ts"],
+      "@marimo-team/mdx-marimo/remark": ["./src/remark/index.ts"]
     }
   },
   "include": ["src"]

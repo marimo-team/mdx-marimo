@@ -1,0 +1,77 @@
+:where(.marimo-island-host) :where(pre) {
+  background: var(--_marimo-island-code-background) !important;
+  border-color: var(--_marimo-island-code-border) !important;
+  color: var(--_marimo-island-code-foreground) !important;
+}
+
+:where(.marimo-island-host) :where(p, li) code,
+:where(.marimo-island-host) :where(p, li) code * {
+  overflow-wrap: anywhere;
+  white-space: normal !important;
+  word-break: break-word;
+}
+
+:where(.marimo-island-host[data-marimo-theme="dark"])
+  :where(
+    .admonition,
+    [class*="admonition"],
+    .callout,
+    .markdown.prose,
+    .markdown.prose *,
+    .codehilite,
+    .codehilite *,
+    .highlight,
+    .highlight *,
+    pre,
+    pre *,
+    code,
+    code *,
+    marimo-accordion,
+    marimo-accordion *,
+    table,
+    thead,
+    tbody,
+    tr,
+    th,
+    td,
+    .marimo-json-output,
+    .marimo-json-output *,
+    .json-viewer-theme-light,
+    .json-viewer-theme-light *,
+    label,
+    input,
+    output,
+    [role="cell"],
+    [role="columnheader"],
+    [role="rowheader"]
+  ) {
+  color: var(--_marimo-island-foreground) !important;
+}
+
+:where(.marimo-island-host[data-marimo-theme="dark"])
+  :where(.admonition, [class*="admonition"], .callout) {
+  background: var(--_marimo-island-muted-surface) !important;
+  border-color: var(--_marimo-island-border) !important;
+}
+
+:where(.marimo-island-host[data-marimo-theme="dark"]) :where(input, textarea, select) {
+  background: var(--_marimo-island-surface) !important;
+  border-color: var(--_marimo-island-border) !important;
+  color: var(--_marimo-island-foreground) !important;
+}
+
+.marimo-island-error {
+  border: 1px solid var(--_marimo-island-error-border);
+  border-radius: var(--_marimo-island-radius);
+  color: var(--_marimo-island-error-foreground);
+  padding: 0.75rem;
+}
+
+.marimo-island-error summary {
+  color: var(--_marimo-island-error-accent);
+}
+
+.marimo-island-error pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

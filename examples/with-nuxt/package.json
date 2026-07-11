@@ -5,16 +5,16 @@
   "type": "module",
   "scripts": {
     "build": "nuxt build",
-    "build:deps": "pnpm --filter @marimo-team/mdx-marimo build",
-    "prebuild": "pnpm run build:deps",
     "dev": "nuxt dev --host 127.0.0.1 --port 4106",
-    "predev": "pnpm run build:deps",
     "generate": "nuxt generate",
-    "pregenerate": "pnpm run build:deps",
-    "prepare": "pnpm run build:deps && nuxt prepare"
+    "predev": "vp run -t @marimo-team/mdx-marimo#build",
+    "pregenerate": "vp run -t @marimo-team/mdx-marimo#build",
+    "prepare": "nuxt prepare",
+    "preprepare": "vp run -t @marimo-team/mdx-marimo#build"
   },
   "dependencies": {
     "@marimo-team/mdx-marimo": "workspace:*",
+    "@mdx-js/rollup": "^3.1.1",
     "@mdx-js/vue": "^3.1.1",
     "nuxt": "4.3.1",
     "vue": "3.5.38"

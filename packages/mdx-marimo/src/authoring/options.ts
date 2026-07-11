@@ -1,4 +1,8 @@
-import type { MarimoCellOptions, MarimoDiagnostic, MarimoLanguage } from "../schema";
+import type {
+  MarimoCellOptions,
+  MarimoDiagnostic,
+  MarimoLanguage,
+} from "@marimo-team/islands-bridge/protocol";
 
 const booleanKeys = new Set([
   "echo",
@@ -84,7 +88,7 @@ function normalizeCellOptions(
   const options: MarimoCellOptions = {
     language,
     render: {
-      source: include && (echo || editor) && !hideCode,
+      source: include && (echo || editor || unparsable) && !hideCode,
       output: include && output && !hideOutput,
       include,
       editor,
