@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       node-version: ${{ steps.node-version.outputs.version }}
+      npm_tag: ${{ steps.release.outputs.npm_tag }}
 
     steps:
       - name: Check out repository
@@ -37,20 +38,27 @@ jobs:
           run-install: |
             - args: ['--frozen-lockfile']
 
-      - name: Check workspace
-        run: vp check && vp run -r typecheck
-
-      - name: Test workspace
-        run: vp run -r test
-
-      - name: Build workspace
-        run: vp run -r build
-
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Pack npm package
-        run: pnpm pack:mdx --pack-destination ../../dist/npm
+      - name: Resolve release metadata
+        id: release
+        run: |
+          package_version="$(node -p "require('./packages/mdx-marimo/package.json').version")"
+          expected_tag="v${package_version}"
+          if [[ "${GITHUB_REF_NAME}" != "${expected_tag}" ]]; then
+            echo "Tag ${GITHUB_REF_NAME} must match package version ${package_version}" >&2
+            exit 1
+          fi
+          if [[ "${package_version}" == *-* ]]; then
+            npm_tag="next"
+          else
+            npm_tag="latest"
+          fi
+          echo "npm_tag=${npm_tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Check release
+        run: pnpm release:check
 
       - name: Upload npm package
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -86,7 +94,7 @@ jobs:
           path: dist/npm
 
       - name: Publish mdx-marimo
-        run: npx --yes npm@11.12.1 publish --access public dist/npm/marimo-team-mdx-marimo-*.tgz
+        run: npx --yes npm@11.12.1 publish --access public --tag "${{ needs.build.outputs.npm_tag }}" dist/npm/marimo-team-mdx-marimo-*.tgz
 
   release-notes:
     name: Update release notes

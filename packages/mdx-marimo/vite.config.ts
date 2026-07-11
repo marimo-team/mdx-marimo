@@ -71,8 +71,16 @@ export default defineConfig({
       },
       format: ["esm"],
       platform: "neutral",
+      publint: {
+        level: "error",
+      },
       sourcemap: true,
       target: "es2022",
+      attw: {
+        excludeEntrypoints: ["./styles.css"],
+        level: "error",
+        profile: "esm-only",
+      },
     },
     {
       name: "mdx-marimo-element-auto",
