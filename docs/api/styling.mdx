@@ -1,0 +1,96 @@
+---
+title: Styling
+description: Map the host theme into marimo output with stable CSS properties.
+---
+
+Import the package stylesheet once, then set marimo island properties on the
+page container or another shared ancestor:
+
+```css
+@import "@marimo-team/mdx-marimo/styles.css";
+
+.article {
+  --marimo-island-background: var(--page-background);
+  --marimo-island-foreground: var(--page-foreground);
+  --marimo-island-surface: var(--panel-background);
+  --marimo-island-muted-surface: var(--muted-background);
+  --marimo-island-muted-foreground: var(--muted-foreground);
+  --marimo-island-border: var(--page-border);
+  --marimo-island-accent: var(--primary);
+  --marimo-island-accent-foreground: var(--on-primary);
+  --marimo-island-focus-ring: var(--focus-ring);
+  --marimo-island-code-background: var(--code-background);
+  --marimo-island-code-foreground: var(--code-foreground);
+}
+```
+
+The properties inherit, so one mapping can style every marimo cell in an
+article. Scope a different mapping to a section when one page needs a distinct
+surface.
+
+## Light and dark themes
+
+The default `auto` theme follows common `light`, `dark`, `light-theme`,
+and `dark-theme` classes, theme data attributes, and inherited
+`color-scheme`.
+
+Keep the public marimo properties connected to the host's semantic theme
+tokens:
+
+```css
+.docs-page {
+  --marimo-island-background: var(--docs-background);
+  --marimo-island-foreground: var(--docs-foreground);
+  --marimo-island-surface: var(--docs-card);
+  --marimo-island-muted-surface: var(--docs-muted);
+  --marimo-island-muted-foreground: var(--docs-muted-foreground);
+  --marimo-island-border: var(--docs-border);
+  --marimo-island-accent: var(--docs-primary);
+  --marimo-island-accent-foreground: var(--docs-primary-foreground);
+}
+```
+
+When the host changes theme, inherited values update the connected islands.
+Use explicit `light` or `dark` mode through the compiler or runtime API only
+when the page theme is fixed.
+
+## Color properties
+
+| Property                            | Controls                        |
+| ----------------------------------- | ------------------------------- |
+| `--marimo-island-background`        | Island background               |
+| `--marimo-island-foreground`        | Main text                       |
+| `--marimo-island-surface`           | Cards, inputs, and popovers     |
+| `--marimo-island-muted-surface`     | Secondary surfaces              |
+| `--marimo-island-muted-foreground`  | Secondary text and placeholders |
+| `--marimo-island-border`            | Borders and input outlines      |
+| `--marimo-island-accent`            | Primary controls and links      |
+| `--marimo-island-accent-foreground` | Text on accent surfaces         |
+| `--marimo-island-focus-ring`        | Keyboard focus ring             |
+| `--marimo-island-code-background`   | Code blocks and editors         |
+| `--marimo-island-code-foreground`   | Code text                       |
+
+## Error properties
+
+| Property                           | Controls                 |
+| ---------------------------------- | ------------------------ |
+| `--marimo-island-error-background` | Error surface            |
+| `--marimo-island-error-border`     | Error border             |
+| `--marimo-island-error-foreground` | Error body text          |
+| `--marimo-island-error-accent`     | Error title and emphasis |
+
+## Layout properties
+
+| Property                       | Default  | Controls                        |
+| ------------------------------ | -------- | ------------------------------- |
+| `--marimo-island-radius`       | `0.5rem` | Corners owned by marimo output  |
+| `--marimo-island-margin-block` | `1rem`   | Vertical space around each cell |
+
+Set page width, surrounding spacing, and typography on the host container. Use
+marimo properties for surfaces owned inside an island.
+
+The framework examples include complete light and dark mappings for
+[Fumadocs](https://github.com/marimo-team/mdx-marimo/blob/main/apps/docs/src/styles/app.css),
+[Docusaurus](https://github.com/marimo-team/mdx-marimo/blob/main/examples/with-docusaurus/src/css/custom.css),
+and the shared
+[example theme](https://github.com/marimo-team/mdx-marimo/blob/main/examples/site.css).

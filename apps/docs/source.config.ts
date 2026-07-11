@@ -1,9 +1,9 @@
 import { metaSchema, pageSchema } from "fumadocs-core/source/schema";
 import { defineConfig, defineDocs } from "fumadocs-mdx/config";
-import { marimoMdx } from "@marimo-team/mdx-marimo/preset";
+import { remarkMarimo } from "@marimo-team/mdx-marimo/remark";
 
 export const docs = defineDocs({
-  dir: "content/docs",
+  dir: "../../docs",
   docs: {
     schema: pageSchema,
     postprocess: {
@@ -17,6 +17,6 @@ export const docs = defineDocs({
 
 export default defineConfig({
   mdxOptions: {
-    remarkPlugins: [marimoMdx()],
+    remarkPlugins: [remarkMarimo],
   },
 });

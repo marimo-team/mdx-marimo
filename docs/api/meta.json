@@ -1,0 +1,4 @@
+{
+  "title": "API reference",
+  "pages": ["index", "getting-started", "frameworks", "authoring", "javascript", "styling"]
+}

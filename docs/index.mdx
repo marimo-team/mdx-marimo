@@ -1,0 +1,71 @@
+---
+title: mdx-marimo
+description: Run reactive Python, SQL, and Markdown cells inside MDX pages.
+---
+
+Write marimo cells between ordinary MDX content. Every cell on the page shares
+one reactive Python namespace while the host keeps its components, layout,
+navigation, and theme.
+
+Move the slider. The site build wrote the initial output into this page, then
+marimo hydrated the cells in the browser.
+
+```python marimo output=false
+import marimo as mo
+```
+
+```python marimo
+emphasis = mo.ui.slider(1, 8, value=3, label="exclamation points")
+emphasis
+```
+
+This sentence is ordinary MDX between two marimo cells.
+
+```python marimo
+mo.md(f"### Reactive Python inside MDX{'!' * emphasis.value}")
+```
+
+## Install
+
+```bash
+pnpm add @marimo-team/mdx-marimo
+```
+
+Connect mdx-marimo at two points in the host application. Add `remarkMarimo`
+to the MDX compiler during the site build:
+
+```ts title="source.config.ts"
+import { defineConfig } from "fumadocs-mdx/config";
+import { remarkMarimo } from "@marimo-team/mdx-marimo/remark";
+
+export default defineConfig({
+  mdxOptions: {
+    remarkPlugins: [remarkMarimo],
+  },
+});
+```
+
+Load the stylesheet and register the browser runtime once beside the MDX page
+tree:
+
+```tsx title="mdx-runtime.tsx"
+"use client";
+
+import { MarimoIslandRuntime } from "@marimo-team/mdx-marimo/react";
+import "@marimo-team/mdx-marimo/styles.css";
+
+export function MdxRuntime() {
+  return <MarimoIslandRuntime />;
+}
+```
+
+Use [Getting started](api/getting-started.md) for the complete first page. The
+[framework setup](api/frameworks.md) covers Next.js, Fumadocs, Docusaurus,
+Astro, React, Vue, and Nuxt.
+
+## Continue
+
+- [API reference](api/index.md) covers authoring syntax, package exports,
+  compilation, browser registration, and styling.
+- [Showcase](tutorials/index.md) contains the full marimo tutorial notebooks
+  rendered as interactive MDX pages.

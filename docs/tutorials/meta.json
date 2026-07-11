@@ -1,16 +1,19 @@
 {
-  "title": "Tutorial notebooks",
+  "title": "Showcase",
   "pages": [
     "index",
+    "---Learn marimo---",
     "intro",
     "dataflow",
     "ui",
     "markdown",
+    "---Interactive documents---",
     "plots",
     "layout",
+    "sql",
+    "---Notebook formats---",
     "fileformat",
     "markdown_format",
-    "for_jupyter_users",
-    "sql"
+    "for_jupyter_users"
   ]
 }
