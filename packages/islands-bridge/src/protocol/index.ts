@@ -1,4 +1,4 @@
-export const MARIMO_PAGE_PROTOCOL_VERSION = 1 as const;
+export const MARIMO_PAGE_PROTOCOL_VERSION = 2 as const;
 
 export type MarimoPageProtocolVersion = typeof MARIMO_PAGE_PROTOCOL_VERSION;
 export type JsonPrimitive = string | number | boolean | null;
@@ -112,6 +112,16 @@ export type MarimoPageCellPayload = {
   cell: CompiledMarimoCell;
 };
 
+export type MarimoPageCellReferencePayload = {
+  protocolVersion: MarimoPageProtocolVersion;
+  appId: string;
+  cell: CompiledMarimoCell;
+};
+
+export type MarimoPageSerializedCellPayload =
+  | MarimoPageCellPayload
+  | MarimoPageCellReferencePayload;
+
 export type MarimoPageCompiler = (
   request: MarimoPageRequest,
 ) => CompiledMarimoPage | Promise<CompiledMarimoPage>;
@@ -127,10 +137,34 @@ export function pageCellPayload(
   };
 }
 
+export function pageCellReferencePayload(
+  page: Pick<CompiledMarimoPage, "protocolVersion" | "app">,
+  cell: CompiledMarimoCell,
+): MarimoPageSerializedCellPayload {
+  if (!page.app) return pageCellPayload(page, cell);
+  return {
+    protocolVersion: page.protocolVersion,
+    appId: page.app.id,
+    cell,
+  };
+}
+
 export function isMarimoPageCellPayload(value: unknown): value is MarimoPageCellPayload {
   if (!isRecord(value) || value.protocolVersion !== MARIMO_PAGE_PROTOCOL_VERSION) return false;
   if (!isCompiledCell(value.cell)) return false;
   return value.app === null || isPageRuntime(value.app);
+}
+
+export function isMarimoPageCellReferencePayload(
+  value: unknown,
+): value is MarimoPageCellReferencePayload {
+  return (
+    isRecord(value) &&
+    value.protocolVersion === MARIMO_PAGE_PROTOCOL_VERSION &&
+    typeof value.appId === "string" &&
+    value.appId.length > 0 &&
+    isCompiledCell(value.cell)
+  );
 }
 
 export function isCompiledMarimoPage(value: unknown): value is CompiledMarimoPage {
@@ -157,6 +191,7 @@ function isPageRuntime(value: unknown): value is MarimoPageRuntime {
   return (
     isRecord(value) &&
     typeof value.id === "string" &&
+    value.id.length > 0 &&
     isFiniteNumber(value.runtimeCellCount) &&
     isRuntimeAssets(value.assets) &&
     (value.notebookCode === undefined || typeof value.notebookCode === "string") &&

@@ -1,8 +1,9 @@
-import type {
-  CompiledMarimoPage,
-  MarimoCellOptions,
-  MarimoPageCompiler,
-  MarimoPageRequest,
+import {
+  MARIMO_PAGE_PROTOCOL_VERSION,
+  type CompiledMarimoPage,
+  type MarimoCellOptions,
+  type MarimoPageCompiler,
+  type MarimoPageRequest,
 } from "@marimo-team/islands-bridge/protocol";
 import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vite-plus/test";
@@ -75,7 +76,7 @@ describe("marimoVitePress", () => {
     const firstPayload = payloads[0]?.[1];
     expect(firstPayload).toBeDefined();
     expect(decodePayload(firstPayload!)).toMatchObject({
-      protocolVersion: 1,
+      protocolVersion: MARIMO_PAGE_PROTOCOL_VERSION,
       app: { id: "marimo-test", runtimeCellCount: 3 },
       cell: { index: 1 },
     });
@@ -151,7 +152,7 @@ function compiler(inspect: (request: MarimoPageRequest) => void = () => {}): Mar
 
 function compiledPage(request: MarimoPageRequest): CompiledMarimoPage {
   return {
-    protocolVersion: 1,
+    protocolVersion: MARIMO_PAGE_PROTOCOL_VERSION,
     app: {
       id: "marimo-test",
       runtimeCellCount: request.cells.length,

@@ -3,6 +3,8 @@ import {
   MARIMO_PAGE_PROTOCOL_VERSION,
   isCompiledMarimoPage,
   isMarimoPageCellPayload,
+  isMarimoPageCellReferencePayload,
+  pageCellReferencePayload,
   pageCellPayload,
   type CompiledMarimoPage,
 } from "../src/protocol";
@@ -19,12 +21,49 @@ describe("marimo page protocol", () => {
     expect(payload.cell).toBe(page.cells[0]);
   });
 
+  it("creates a cell reference without copying the page app", () => {
+    const page = compiledPage();
+
+    const payload = pageCellReferencePayload(page, page.cells[0]!);
+
+    expect(isMarimoPageCellReferencePayload(payload)).toBe(true);
+    expect(payload).toEqual({
+      protocolVersion: MARIMO_PAGE_PROTOCOL_VERSION,
+      appId: "marimo-test",
+      cell: page.cells[0],
+    });
+    expect(payload).not.toHaveProperty("app");
+  });
+
+  it("keeps static cells self-contained", () => {
+    const page = { ...compiledPage(), app: null };
+
+    const payload = pageCellReferencePayload(page, page.cells[0]!);
+
+    expect(isMarimoPageCellPayload(payload)).toBe(true);
+    expect(payload).toMatchObject({ app: null, cell: page.cells[0] });
+  });
+
   it("rejects payloads from another protocol version", () => {
     expect(
       isMarimoPageCellPayload({
-        protocolVersion: 2,
+        protocolVersion: 1,
         app: null,
         cell: { index: 0, html: "", options: {} },
+      }),
+    ).toBe(false);
+    expect(
+      isMarimoPageCellReferencePayload({
+        protocolVersion: 1,
+        appId: "marimo-test",
+        cell: compiledPage().cells[0],
+      }),
+    ).toBe(false);
+    expect(
+      isMarimoPageCellReferencePayload({
+        protocolVersion: MARIMO_PAGE_PROTOCOL_VERSION,
+        appId: "",
+        cell: compiledPage().cells[0],
       }),
     ).toBe(false);
   });
@@ -49,6 +88,17 @@ describe("marimo page protocol", () => {
         }),
       ).toBe(false);
     }
+  });
+
+  it("rejects an empty runtime app ID", () => {
+    const page = compiledPage();
+
+    expect(
+      isCompiledMarimoPage({
+        ...page,
+        app: { ...page.app, id: "" },
+      }),
+    ).toBe(false);
   });
 
   it("rejects incomplete compiled cell options", () => {
