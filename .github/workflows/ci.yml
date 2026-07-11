@@ -30,10 +30,10 @@ jobs:
             - args: ['--frozen-lockfile']
 
       - name: Check workspace
-        run: pnpm check
+        run: vp check && vp run -r typecheck
 
       - name: Test workspace
-        run: pnpm test
+        run: vp run -r test
 
       - name: Build workspace
-        run: pnpm build
+        run: vp run -r build

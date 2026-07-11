@@ -38,7 +38,16 @@ jobs:
             - args: ['--frozen-lockfile']
 
       - name: Check workspace
-        run: pnpm ready
+        run: vp check && vp run -r typecheck
+
+      - name: Test workspace
+        run: vp run -r test
+
+      - name: Build workspace
+        run: vp run -r build
+
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Pack npm package
         run: pnpm pack:mdx --pack-destination ../../dist/npm

@@ -40,7 +40,7 @@ jobs:
         uses: actions/configure-pages@45bfe168e8c8144b9e0cda9c7b3152f945af8e63 # v6
 
       - name: Build docs
-        run: pnpm exec vp run -t @marimo-team/mdx-marimo-docs#build
+        run: vp run -t @marimo-team/mdx-marimo-docs#build
 
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@fc324e79d6c72123eb7a4cb3c4c729ad62aa84b9 # v5
