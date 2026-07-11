@@ -7,6 +7,18 @@ contributor documentation map. Read
 [`development_docs/architecture.md`](./development_docs/architecture.md) before
 changing package boundaries, protocol values, compilation, or browser mounting.
 
+## Setup
+
+Use Node 24 from [`.node-version`](./.node-version) and pnpm 11.10.0 from the
+`packageManager` field in [`package.json`](./package.json). Enable Corepack so
+the repository selects its pinned pnpm release, then install from the workspace
+root:
+
+```bash
+corepack enable
+pnpm install --frozen-lockfile
+```
+
 ## Commands
 
 | Purpose       | Command                          | Expected result                           |

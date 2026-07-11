@@ -8,12 +8,15 @@ policy.
 ## Setup
 
 ```bash
+corepack enable
 pnpm install --frozen-lockfile
 ```
 
-The root `package.json` requires Node 22.18 or newer and pins pnpm 11.10.0. CI
-runs on the current Node 22 release. `@manzt/uv` supplies the `uv` command used
-by the default page compiler when a host-local `uv` executable is unavailable.
+Use Node 24 from [`.node-version`](../.node-version) and the pnpm version pinned
+in [`package.json`](../package.json). The root package accepts Node 22.18 or
+newer, while contributor workflows and CI use Node 24. `@manzt/uv` supplies the
+`uv` command used by the default page compiler when a host-local `uv`
+executable is unavailable.
 
 ## Commands
 
@@ -38,6 +41,15 @@ Use a package filter for a host app:
 ```bash
 pnpm --filter @marimo-team/mdx-marimo-example-react dev
 ```
+
+For a first local integration target, start the documentation app:
+
+```bash
+pnpm --filter @marimo-team/mdx-marimo-docs dev
+```
+
+Open <http://127.0.0.1:4100>. The `predev` script builds the local packages
+before Vite starts.
 
 ## Task graph
 

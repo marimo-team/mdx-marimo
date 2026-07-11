@@ -74,9 +74,11 @@ through MDX.
 
 ## Development
 
-Requires Node 22.18 or newer and pnpm 11.10.0.
+Use Node 24 from [`.node-version`](./.node-version) and the pnpm version pinned
+in [`package.json`](./package.json).
 
 ```bash
+corepack enable
 pnpm install --frozen-lockfile
 pnpm ready
 ```
