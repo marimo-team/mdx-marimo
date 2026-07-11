@@ -1,6 +1,6 @@
 // @ts-check
 
-import { marimoReactMdx } from "@marimo-team/mdx-marimo/react";
+import { remarkMarimo } from "@marimo-team/mdx-marimo/remark";
 
 /** @type {import("@docusaurus/types").Config} */
 const config = {
@@ -27,7 +27,7 @@ const config = {
           path: "docs",
           routeBasePath: "/",
           sidebarPath: "./sidebars.js",
-          remarkPlugins: [marimoReactMdx()],
+          remarkPlugins: [remarkMarimo],
         },
         blog: false,
         theme: {

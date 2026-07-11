@@ -1,11 +1,29 @@
-# React Vite MDX marimo
+# React and Vite
 
-This example renders marimo code fences from `src/content.mdx` in a Vite React app.
+This example renders reactive marimo cells from MDX in a React application.
+
+## Run
+
+Run the commands from the repository root:
 
 ```bash
-pnpm --dir examples/with-react dev
+pnpm install --frozen-lockfile
+pnpm --filter @marimo-team/mdx-marimo-example-react dev
 ```
 
-`vite.config.ts` runs `@mdx-js/rollup` with `providerImportSource: "@mdx-js/react"` and `marimoReactMdx()`. The MDX compile step extracts each `python marimo` fence into a marimo output payload and replaces the fence with `MarimoIsland` from `@marimo-team/mdx-marimo/react`.
+Open <http://127.0.0.1:4101>. The `predev` script builds the local
+`@marimo-team/mdx-marimo` package through Vite+ before Vite starts.
 
-`src/main.tsx` mounts the MDX page through `MDXProvider` and imports `@marimo-team/mdx-marimo/styles.css`. In the browser, each island mounts the marimo runtime so the slider and dependent markdown cell stay reactive.
+Build the example and its workspace dependencies with Vite+:
+
+```bash
+pnpm exec vp run -t @marimo-team/mdx-marimo-example-react#build
+```
+
+## Integration
+
+- [`vite.config.ts`](./vite.config.ts) configures `@mdx-js/rollup` with
+  `remarkMarimo` and the React MDX provider.
+- [`src/main.tsx`](./src/main.tsx) imports the island stylesheet and renders
+  `MarimoIslandRuntime` once for the application.
+- [`src/content.mdx`](./src/content.mdx) contains the dependent marimo cells.

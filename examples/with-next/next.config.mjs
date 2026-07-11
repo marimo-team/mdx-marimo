@@ -1,5 +1,5 @@
 import createMDX from "@next/mdx";
-import { marimoReactMdx } from "@marimo-team/mdx-marimo/react";
+import { remarkMarimo } from "@marimo-team/mdx-marimo/remark";
 
 /** @type {import("next").NextConfig} */
 const nextConfig = {
@@ -8,7 +8,7 @@ const nextConfig = {
 
 const withMDX = createMDX({
   options: {
-    remarkPlugins: [marimoReactMdx()],
+    remarkPlugins: [remarkMarimo],
   },
 });
 

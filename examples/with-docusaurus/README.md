@@ -1,11 +1,32 @@
-# Docusaurus MDX marimo
+# Docusaurus
 
-This example renders marimo fences across multiple Docusaurus docs pages.
+This example renders dependent marimo cells across several Docusaurus MDX
+pages.
+
+## Run
+
+Run the commands from the repository root:
 
 ```bash
-pnpm --dir examples/with-docusaurus dev
+pnpm install --frozen-lockfile
+pnpm --filter @marimo-team/mdx-marimo-example-docusaurus dev
 ```
 
-`docusaurus.config.js` registers `marimoReactMdx()` in `docs.remarkPlugins`. Docusaurus compiles each MDX page, the marimo plugin extracts the fenced cells, and the generated docs import `MarimoIsland` from `@marimo-team/mdx-marimo/react`.
+Open <http://127.0.0.1:4105>. The `predev` script builds the local
+`@marimo-team/mdx-marimo` package through Vite+ before Docusaurus starts.
 
-`src/css/custom.css` imports the marimo island styles once for the site. Each docs page under `docs/` owns its own marimo cells and keeps the browser runtime reactive after navigation.
+Build the example and its workspace dependencies with Vite+:
+
+```bash
+pnpm exec vp run -t @marimo-team/mdx-marimo-example-docusaurus#build
+```
+
+## Integration
+
+- [`docusaurus.config.js`](./docusaurus.config.js) adds `remarkMarimo` to the
+  docs remark plugins.
+- [`src/theme/Root.js`](./src/theme/Root.js) registers the React island runtime
+  after Docusaurus hydrates.
+- [`src/css/custom.css`](./src/css/custom.css) imports the island stylesheet
+  and maps the Docusaurus light and dark themes.
+- [`docs/`](./docs) contains the MDX pages and their page-local marimo cells.

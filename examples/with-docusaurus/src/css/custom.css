@@ -1,10 +1,42 @@
 @import "@marimo-team/mdx-marimo/styles.css";
 
 :root {
-  --ifm-color-primary: #2563eb;
+  --ifm-color-primary: #0880ea;
   --ifm-code-font-size: 0.9rem;
 }
 
+html,
+body {
+  background: var(--ifm-background-surface-color);
+}
+
 .marimo-island-host {
-  margin: 1rem 0;
+  --marimo-island-background: #ffffff;
+  --marimo-island-foreground: #0f172a;
+  --marimo-island-surface: #ffffff;
+  --marimo-island-muted-surface: #f1f5f9;
+  --marimo-island-muted-foreground: #64748b;
+  --marimo-island-border: #e2e8f0;
+  --marimo-island-accent: #0880ea;
+  --marimo-island-accent-foreground: #f8fafc;
+  --marimo-island-focus-ring: #94a3b8;
+  --marimo-island-code-background: #ffffff;
+  --marimo-island-code-foreground: #000000;
+}
+
+html[data-theme="dark"] {
+  --ifm-color-primary: #28879f;
+}
+
+html[data-theme="dark"] .marimo-island-host {
+  --marimo-island-background: #181c1a;
+  --marimo-island-foreground: #eceeed;
+  --marimo-island-surface: #252927;
+  --marimo-island-muted-surface: #020303;
+  --marimo-island-muted-foreground: #aab2af;
+  --marimo-island-border: #3b403e;
+  --marimo-island-accent: #28879f;
+  --marimo-island-accent-foreground: #b6ecf7;
+  --marimo-island-code-background: #282c34;
+  --marimo-island-code-foreground: #abb2bf;
 }
