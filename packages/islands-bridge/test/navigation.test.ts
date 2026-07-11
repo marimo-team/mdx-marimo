@@ -68,6 +68,24 @@ describe("document navigation", () => {
     history.pushState({}, "", "/docs/fences");
     expect(pushState).toHaveBeenCalledWith({}, "", "/docs/fences");
   });
+
+  it("shares the navigation lease across bridge module instances", async () => {
+    const { pushState } = await installBrowserGlobals();
+    const firstBridge = await import("../src/browser/navigation");
+    const releaseFirst = firstBridge.retainDocumentNavigation();
+
+    vi.resetModules();
+    const secondBridge = await import("../src/browser/navigation");
+    const releaseSecond = secondBridge.retainDocumentNavigation();
+
+    releaseFirst();
+    history.pushState({}, "", "/docs/fences");
+    expect(pushState).not.toHaveBeenCalled();
+
+    releaseSecond();
+    history.pushState({}, "", "/docs/fences");
+    expect(pushState).toHaveBeenCalledWith({}, "", "/docs/fences");
+  });
 });
 
 class TestElement {
