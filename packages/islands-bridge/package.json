@@ -1,0 +1,62 @@
+{
+  "name": "@marimo-team/islands-bridge",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Host-neutral page protocol and browser bridge for publishing reactive marimo islands.",
+  "keywords": [
+    "browser",
+    "islands",
+    "marimo",
+    "protocol",
+    "publishing"
+  ],
+  "homepage": "https://github.com/marimo-team/mdx-marimo/tree/main/packages/islands-bridge#readme",
+  "bugs": {
+    "url": "https://github.com/marimo-team/mdx-marimo/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marimo-team/mdx-marimo.git",
+    "directory": "packages/islands-bridge"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "sideEffects": [
+    "./dist/styles.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./protocol": {
+      "types": "./dist/protocol/index.d.ts",
+      "import": "./dist/protocol/index.js",
+      "default": "./dist/protocol/index.js"
+    },
+    "./browser": {
+      "types": "./dist/browser/index.d.ts",
+      "import": "./dist/browser/index.js",
+      "default": "./dist/browser/index.js"
+    },
+    "./element": {
+      "types": "./dist/element/index.d.ts",
+      "import": "./dist/element/index.js",
+      "default": "./dist/element/index.js"
+    },
+    "./styles.css": "./dist/styles.css",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "prepack": "vp run -t build",
+    "test": "vp test run"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0"
+  }
+}

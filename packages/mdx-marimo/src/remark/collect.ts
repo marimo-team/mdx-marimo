@@ -2,19 +2,19 @@ import type { Root } from "mdast";
 import { visit } from "unist-util-visit";
 import { fenceLanguage, isMarimoConfigFence, isMarimoFence } from "../authoring/fences";
 import { parseFenceOptions } from "../authoring/options";
-import type { MarimoCell, MarimoDiagnostic } from "../schema";
+import type { MarimoCellRequest, MarimoDiagnostic } from "@marimo-team/islands-bridge/protocol";
 import type { MessageFile, ParentNode, TreeEdit } from "./edits";
 import { reportDiagnostic, withOptionalLine } from "./edits";
 
 export type CollectedMarimoPage = {
-  cells: MarimoCell[];
+  cells: MarimoCellRequest[];
   diagnostics: MarimoDiagnostic[];
   edits: TreeEdit[];
   pyproject: string | undefined;
 };
 
 export function collectMarimoPage(tree: Root, file: MessageFile): CollectedMarimoPage {
-  const cells: MarimoCell[] = [];
+  const cells: MarimoCellRequest[] = [];
   const diagnostics: MarimoDiagnostic[] = [];
   const edits: TreeEdit[] = [];
   let pyproject: string | undefined;
@@ -57,7 +57,7 @@ export function collectMarimoPage(tree: Root, file: MessageFile): CollectedMarim
       diagnostics.push(withLocation);
       reportDiagnostic(file, withLocation);
     }
-    const cell: MarimoCell = {
+    const cell: MarimoCellRequest = {
       index: cells.length,
       source: node.value,
       options: parsed.options,

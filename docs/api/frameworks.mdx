@@ -1,0 +1,245 @@
+---
+title: Framework setup
+description: Connect mdx-marimo to React, Next.js, Fumadocs, Docusaurus, Astro, Vue, or Nuxt.
+---
+
+Connect mdx-marimo at build time and after the page reaches the browser:
+
+1. Add `remarkMarimo` to the MDX compiler so the site build can execute
+   marimo cells and include their rendered output.
+2. Load the stylesheet and browser runtime so the static output becomes
+   reactive after the page loads.
+
+Install the package before choosing the host-specific files below:
+
+```bash
+pnpm add @marimo-team/mdx-marimo
+```
+
+## React-based hosts
+
+Next.js, Fumadocs, Docusaurus, and Vite with React all use the same runtime
+component.
+
+```tsx title="mdx-runtime.tsx"
+"use client";
+
+import { MarimoIslandRuntime } from "@marimo-team/mdx-marimo/react";
+import "@marimo-team/mdx-marimo/styles.css";
+
+export function MdxRuntime() {
+  return <MarimoIslandRuntime />;
+}
+```
+
+Render `MdxRuntime` once beside the MDX page tree. It registers the marimo
+custom element after React hydrates the page.
+
+### Fumadocs
+
+```ts title="source.config.ts"
+import { defineConfig } from "fumadocs-mdx/config";
+import { remarkMarimo } from "@marimo-team/mdx-marimo/remark";
+
+export default defineConfig({
+  mdxOptions: {
+    remarkPlugins: [remarkMarimo],
+  },
+});
+```
+
+Place `MdxRuntime` in the docs route or layout that renders the compiled MDX.
+The surrounding components remain server-renderable.
+
+### Next.js
+
+```js title="next.config.mjs"
+import createMDX from "@next/mdx";
+import { remarkMarimo } from "@marimo-team/mdx-marimo/remark";
+
+const withMDX = createMDX({
+  options: {
+    remarkPlugins: [remarkMarimo],
+  },
+});
+
+export default withMDX({
+  pageExtensions: ["js", "jsx", "ts", "tsx", "mdx"],
+});
+```
+
+Import the stylesheet and render `MdxRuntime` from the Pages Router
+`_app`, an App Router layout, or the nearest existing client boundary around
+MDX content.
+
+See the complete [Next.js
+example](https://github.com/marimo-team/mdx-marimo/tree/main/examples/with-next).
+
+### Docusaurus
+
+```js title="docusaurus.config.js"
+import { remarkMarimo } from "@marimo-team/mdx-marimo/remark";
+
+export default {
+  presets: [
+    [
+      "classic",
+      {
+        docs: {
+          remarkPlugins: [remarkMarimo],
+        },
+      },
+    ],
+  ],
+};
+```
+
+Render `MdxRuntime` from a
+[Root theme component](https://docusaurus.io/docs/swizzling#wrapper-your-site-with-root)
+and import the package stylesheet from the site's custom CSS.
+
+See the complete [Docusaurus
+example](https://github.com/marimo-team/mdx-marimo/tree/main/examples/with-docusaurus).
+
+### React with Vite
+
+Pass `remarkMarimo` to `@mdx-js/rollup`:
+
+```ts title="vite.config.ts"
+import mdx from "@mdx-js/rollup";
+import { remarkMarimo } from "@marimo-team/mdx-marimo/remark";
+import react from "@vitejs/plugin-react";
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  plugins: [
+    {
+      enforce: "pre",
+      ...mdx({
+        jsxImportSource: "react",
+        providerImportSource: "@mdx-js/react",
+        remarkPlugins: [remarkMarimo],
+      }),
+    },
+    react(),
+  ],
+});
+```
+
+See the complete [React
+example](https://github.com/marimo-team/mdx-marimo/tree/main/examples/with-react).
+
+## Astro
+
+Add `remarkMarimo` to Astro's MDX processor:
+
+```js title="astro.config.mjs"
+import mdx from "@astrojs/mdx";
+import { unified } from "@astrojs/markdown-remark";
+import { defineConfig } from "astro/config";
+import { remarkMarimo } from "@marimo-team/mdx-marimo/remark";
+
+export default defineConfig({
+  integrations: [
+    mdx({
+      processor: unified({
+        remarkPlugins: [remarkMarimo],
+      }),
+    }),
+  ],
+});
+```
+
+Load the stylesheet and browser entry from an MDX layout or page:
+
+```mdx
+import "@marimo-team/mdx-marimo/styles.css";
+import marimoRuntimeUrl from "@marimo-team/mdx-marimo/element/auto?url";
+
+<script type="module" src={marimoRuntimeUrl}></script>
+```
+
+See the complete [Astro
+example](https://github.com/marimo-team/mdx-marimo/tree/main/examples/with-astro).
+
+## Vue and Nuxt
+
+Install the Vue MDX peers:
+
+```bash
+pnpm add @mdx-js/rollup @mdx-js/vue vue
+```
+
+Configure `@mdx-js/rollup` with the Vue JSX runtime and `remarkMarimo`.
+
+```ts title="vite.config.ts"
+import mdx from "@mdx-js/rollup";
+import { remarkMarimo } from "@marimo-team/mdx-marimo/remark";
+import vue from "@vitejs/plugin-vue";
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  plugins: [
+    {
+      enforce: "pre",
+      ...mdx({
+        jsxImportSource: "vue",
+        providerImportSource: "@mdx-js/vue",
+        remarkPlugins: [remarkMarimo],
+      }),
+    },
+    vue(),
+  ],
+});
+```
+
+Load the stylesheet and browser entry once from the application entry:
+
+```ts
+import "@marimo-team/mdx-marimo/styles.css";
+import "@marimo-team/mdx-marimo/element/auto";
+```
+
+For Nuxt, pass the same MDX plugin through `vite.plugins` and add the package
+stylesheet under `css`.
+
+```ts title="nuxt.config.ts"
+import mdx from "@mdx-js/rollup";
+import { remarkMarimo } from "@marimo-team/mdx-marimo/remark";
+
+export default defineNuxtConfig({
+  css: ["@marimo-team/mdx-marimo/styles.css"],
+  vite: {
+    plugins: [
+      {
+        enforce: "pre",
+        ...mdx({
+          jsxImportSource: "vue",
+          providerImportSource: "@mdx-js/vue",
+          remarkPlugins: [remarkMarimo],
+        }),
+      },
+    ],
+  },
+});
+```
+
+Register the browser runtime after Nuxt mounts the application:
+
+```ts title="app/plugins/marimo.client.ts"
+export default defineNuxtPlugin((nuxtApp) => {
+  nuxtApp.hook("app:mounted", () => {
+    window.setTimeout(() => {
+      void import("@marimo-team/mdx-marimo/element/auto");
+    }, 0);
+  });
+});
+```
+
+See the complete [Vue
+example](https://github.com/marimo-team/mdx-marimo/tree/main/examples/with-vue)
+and [Nuxt
+example](https://github.com/marimo-team/mdx-marimo/tree/main/examples/with-nuxt).
+
+After the first page builds, use [Styling](styling.md) to map host theme tokens
+into marimo output.

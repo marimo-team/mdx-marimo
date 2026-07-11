@@ -3,12 +3,9 @@ dist
 coverage
 .test-dist
 .DS_Store
-apps/docs/.marimo-cache
 apps/docs/.next
 apps/docs/.source
 apps/docs/out
-apps/docs/content/docs/**/__marimo__
-examples/*/.marimo-cache
 examples/*/.next
 examples/*/.astro
 examples/*/.docusaurus
@@ -16,6 +13,3 @@ examples/*/build
 examples/*/dist
 examples/*/.nuxt
 examples/*/.output
-examples/*/content/**/__marimo__
-examples/*/pages/**/__marimo__
-examples/*/src/**/__marimo__

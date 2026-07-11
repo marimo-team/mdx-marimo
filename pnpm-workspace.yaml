@@ -2,6 +2,7 @@ packages:
   - "apps/*"
   - "examples/*"
   - "packages/*"
+nodeLinker: hoisted
 minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - "@marimo-team/*"

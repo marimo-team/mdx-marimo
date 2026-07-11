@@ -5,12 +5,9 @@
   "type": "module",
   "scripts": {
     "build": "next build --webpack",
-    "build:deps": "pnpm --filter @marimo-team/mdx-marimo build",
-    "prebuild": "pnpm run build:deps",
     "dev": "next dev --webpack -H 127.0.0.1 -p 4104",
-    "predev": "pnpm run build:deps",
-    "start": "next start -H 127.0.0.1 -p 4104",
-    "prestart": "pnpm run build:deps"
+    "predev": "vp run -t @marimo-team/mdx-marimo#build",
+    "start": "next start -H 127.0.0.1 -p 4104"
   },
   "dependencies": {
     "@marimo-team/mdx-marimo": "workspace:*",

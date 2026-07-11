@@ -5,12 +5,9 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "build:deps": "pnpm --filter @marimo-team/mdx-marimo build",
-    "prebuild": "pnpm run build:deps",
     "dev": "vite --host 127.0.0.1 --port 4101 --strictPort",
-    "predev": "pnpm run build:deps",
-    "preview": "vite preview --host 127.0.0.1 --port 4101 --strictPort",
-    "prepreview": "pnpm run build:deps"
+    "predev": "vp run -t @marimo-team/mdx-marimo#build",
+    "preview": "vite preview --host 127.0.0.1 --port 4101 --strictPort"
   },
   "dependencies": {
     "@marimo-team/mdx-marimo": "workspace:*",

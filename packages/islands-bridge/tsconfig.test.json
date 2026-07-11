@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "paths": {
+      "@marimo-team/islands-bridge": ["./src/index.ts"],
+      "@marimo-team/islands-bridge/browser": ["./src/browser/index.ts"],
+      "@marimo-team/islands-bridge/element": ["./src/element/index.ts"],
+      "@marimo-team/islands-bridge/protocol": ["./src/protocol/index.ts"]
+    }
+  },
+  "include": ["test/**/*.ts"]
+}

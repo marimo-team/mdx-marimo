@@ -1,11 +1,17 @@
 import { compile, type CompileOptions } from "@mdx-js/mdx";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
+import {
+  MARIMO_PAGE_PROTOCOL_VERSION,
+  type CompiledMarimoPage,
+  type MarimoCellOptions,
+  type MarimoPageCompiler,
+  type MarimoPageRequest,
+} from "@marimo-team/islands-bridge/protocol";
 import { remarkMarimo } from "../src/remark";
-import type { MarimoPageRequest, MarimoPageResult } from "../src/schema";
 
 describe("remarkMarimo", () => {
-  it("replaces marimo fences with MDX custom elements", async () => {
+  it("collects one page request and emits protocol-backed custom elements", async () => {
     let request: MarimoPageRequest | undefined;
     const file = await compile("```python marimo echo=true\nx = 1\n```", {
       jsx: true,
@@ -13,191 +19,93 @@ describe("remarkMarimo", () => {
         [
           remarkMarimo,
           {
-            extract: async (payload: MarimoPageRequest): Promise<MarimoPageResult> => {
+            compile: compiler((payload) => {
               request = payload;
-              return {
-                outputs: [
-                  {
-                    html: "<marimo-island></marimo-island>",
-                    appId: "mdx-test",
-                    cellIndex: 0,
-                    runtimeCellCount: 1,
-                    options: payload.cells[0]!.options,
-                  },
-                ],
-              };
-            },
+            }),
           },
         ],
       ],
     });
 
     const compiled = String(file);
-    expect(request?.cells).toHaveLength(1);
-    expect(request?.cells[0]?.source).toBe("x = 1");
-    expect(request?.cells[0]?.options).toMatchObject({
-      language: "python",
-      render: { source: true, output: true, include: true },
-      execution: { enabled: true },
+    expect(request).toMatchObject({
+      protocolVersion: MARIMO_PAGE_PROTOCOL_VERSION,
+      cells: [
+        {
+          index: 0,
+          source: "x = 1",
+          options: {
+            language: "python",
+            render: { source: true, output: true, include: true },
+            execution: { enabled: true },
+          },
+        },
+      ],
     });
     expect(compiled).toContain("<marimo-mdx-island ");
     expect(compiled).toContain('class="marimo-island-host"');
-    expect(compiled).toContain("data-marimo-output");
+    expect(compiled).toContain('data-marimo-payload-encoding="base64url"');
+    expect(compiled).toMatch(/data-marimo-payload="[A-Za-z0-9_-]+"/);
+    expect(compiled).toContain('data-marimo-app-id="marimo-test"');
     expect(compiled).not.toContain("<template");
-    expect(compiled).toContain("&quot;appId&quot;:&quot;mdx-test&quot;");
   });
 
-  it("imports a component output when configured", async () => {
+  it("configures the custom element, theme, and runtime import", async () => {
     const file = await compile("```python marimo\nx = 1\n```", {
       jsx: true,
       remarkPlugins: [
         [
           remarkMarimo,
           {
-            output: {
-              type: "component",
-              componentName: "_MarimoIsland",
-              importName: "MarimoIsland",
-              importSource: "marimo-runtime",
+            element: {
+              name: "marimo-example-island",
+              runtimeImport: "marimo-runtime/auto",
+              theme: "dark",
             },
-            extract: async (payload: MarimoPageRequest): Promise<MarimoPageResult> => ({
-              outputs: [
-                {
-                  html: "<marimo-island></marimo-island>",
-                  appId: "component-test",
-                  cellIndex: 0,
-                  runtimeCellCount: 1,
-                  options: payload.cells[0]!.options,
-                },
-              ],
-            }),
+            compile: compiler(),
           },
         ],
       ],
     });
 
     const compiled = String(file);
-    expect(compiled).toContain('import {MarimoIsland as _MarimoIsland} from "marimo-runtime"');
-    expect(compiled).toContain("<_MarimoIsland ");
-    expect(compiled).toContain("output={{");
+    expect(compiled).toContain('import "marimo-runtime/auto"');
+    expect(compiled).toContain("<marimo-example-island ");
+    expect(compiled).toContain('data-marimo-theme-mode="dark"');
   });
 
-  it("imports an element output client module when configured", async () => {
-    const file = await compile("```python marimo\nx = 1\n```", {
+  it("keeps ordinary fences and nested MDX structure intact", async () => {
+    const ordinary = await compile("```python\nx = 1\n```", {
       jsx: true,
-      remarkPlugins: [
-        [
-          remarkMarimo,
-          {
-            output: {
-              clientImportSource: "marimo-runtime/auto",
-            },
-            extract: async (payload: MarimoPageRequest): Promise<MarimoPageResult> => ({
-              outputs: [
-                {
-                  html: "<marimo-island></marimo-island>",
-                  appId: "element-import-test",
-                  cellIndex: 0,
-                  runtimeCellCount: 1,
-                  options: payload.cells[0]!.options,
-                },
-              ],
-            }),
-          },
-        ],
-      ],
+      remarkPlugins: [[remarkMarimo, { compile: compiler() }]],
+    });
+    const nested = await compile("> ```python marimo\n> x = 1\n> ```", {
+      jsx: true,
+      remarkPlugins: [[remarkMarimo, { compile: compiler() }]],
     });
 
-    expect(String(file)).toContain('import "marimo-runtime/auto"');
-  });
-
-  it("keeps non-marimo Python fences as code blocks", async () => {
-    const file = await compile("```python\nx = 1\n```", {
-      jsx: true,
-      remarkPlugins: [[remarkMarimo, { extract: async () => ({ outputs: [] }) }]],
-    });
-
-    const compiled = String(file);
-    expect(compiled).toContain('<_components.pre><_components.code className="language-python"');
-    expect(compiled).toContain("x = 1");
-  });
-
-  it("replaces nested marimo fences at their original parent", async () => {
-    const file = await compile("> ```python marimo\n> x = 1\n> ```", {
-      jsx: true,
-      remarkPlugins: [
-        [
-          remarkMarimo,
-          {
-            extract: async (payload: MarimoPageRequest): Promise<MarimoPageResult> => ({
-              outputs: [
-                {
-                  html: "<marimo-island></marimo-island>",
-                  appId: "nested-test",
-                  cellIndex: payload.cells[0]!.index,
-                  runtimeCellCount: 1,
-                  options: payload.cells[0]!.options,
-                },
-              ],
-            }),
-          },
-        ],
-      ],
-    });
-
-    const compiled = String(file);
-    const blockquote = compiled.match(
+    expect(String(ordinary)).toContain(
+      '<_components.pre><_components.code className="language-python"',
+    );
+    const blockquote = String(nested).match(
       /<_components\.blockquote>([\s\S]*?)<\/_components\.blockquote>/,
     )?.[1];
     expect(blockquote).toContain("<marimo-mdx-island ");
   });
 
-  it("removes config fences and passes page metadata to extraction", async () => {
-    let request: MarimoPageRequest | undefined;
-    await compile(
-      [
-        "```marimo-config",
-        'dependencies = ["numpy"]',
-        "```",
-        "",
-        "```python marimo",
-        "1",
-        "```",
-      ].join("\n"),
-      {
-        jsx: true,
-        remarkPlugins: [
-          [
-            remarkMarimo,
-            {
-              extract: async (payload: MarimoPageRequest): Promise<MarimoPageResult> => {
-                request = payload;
-                return {
-                  outputs: [
-                    {
-                      html: "<marimo-island></marimo-island>",
-                      appId: "metadata-test",
-                      cellIndex: 0,
-                      runtimeCellCount: 1,
-                      options: payload.cells[0]!.options,
-                    },
-                  ],
-                };
-              },
-            },
-          ],
-        ],
-      },
-    );
-
-    expect(request?.metadata.pyproject).toBe('dependencies = ["numpy"]');
-  });
-
-  it("passes a public relative filename to extraction", async () => {
+  it("maps config, public filename, and configured identity into the request", async () => {
     let request: MarimoPageRequest | undefined;
     await compile(
       {
-        value: "```python marimo\n__file__\n```",
+        value: [
+          "```marimo-config",
+          'dependencies = ["numpy"]',
+          "```",
+          "",
+          "```python marimo",
+          "__file__",
+          "```",
+        ].join("\n"),
         path: join(process.cwd(), "apps", "docs", "page.mdx"),
       },
       {
@@ -207,99 +115,117 @@ describe("remarkMarimo", () => {
             remarkMarimo,
             {
               cwd: process.cwd(),
-              extract: async (payload: MarimoPageRequest): Promise<MarimoPageResult> => {
-                request = payload;
-                return {
-                  outputs: [
-                    {
-                      html: "<marimo-island></marimo-island>",
-                      appId: "filename-test",
-                      cellIndex: 0,
-                      runtimeCellCount: 1,
-                      options: payload.cells[0]!.options,
-                    },
-                  ],
-                };
-              },
-            },
-          ],
-        ],
-      },
-    );
-
-    expect(request?.filename).toBe(join("apps", "docs", "page.mdx"));
-  });
-
-  it("uses a configured identity function", async () => {
-    let request: MarimoPageRequest | undefined;
-    await compile(
-      { value: "```python marimo\n1\n```", path: "/content/page.mdx" },
-      {
-        jsx: true,
-        remarkPlugins: [
-          [
-            remarkMarimo,
-            {
               identity: ({ filename }: { filename: string; filePath: string | undefined }) =>
                 `page:${filename}`,
-              extract: async (payload: MarimoPageRequest): Promise<MarimoPageResult> => {
+              compile: compiler((payload) => {
                 request = payload;
-                return {
-                  outputs: [
-                    {
-                      html: "",
-                      appId: "identity-test",
-                      cellIndex: 0,
-                      runtimeCellCount: 1,
-                      options: payload.cells[0]!.options,
-                    },
-                  ],
-                };
-              },
+              }),
             },
           ],
         ],
       },
     );
 
-    expect(request?.identity).toBe("page:page.mdx");
+    expect(request).toMatchObject({
+      filename: join("apps", "docs", "page.mdx"),
+      identity: `page:${join("apps", "docs", "page.mdx")}`,
+      metadata: { pyproject: 'dependencies = ["numpy"]' },
+    });
   });
 
-  it("requires an extractor for marimo fences", async () => {
-    await expect(
-      compile("```python marimo\nx = 1\n```", {
-        jsx: true,
-        remarkPlugins: [remarkMarimo],
-      }),
-    ).rejects.toThrow("requires an extract function");
-  });
-
-  it("checks extractor output count", async () => {
+  it("stabilizes virtual mdx-bundler page identity across builds", async () => {
+    const requests: MarimoPageRequest[] = [];
+    const source = "Intro\n\n```python marimo\nx = 1\n```";
     const options: CompileOptions = {
       jsx: true,
-      remarkPlugins: [[remarkMarimo, { extract: async () => ({ outputs: [] }) }]],
+      remarkPlugins: [
+        [
+          remarkMarimo,
+          {
+            compile: compiler((request) => requests.push(request)),
+          },
+        ],
+      ],
     };
-    await expect(compile("```python marimo\nx = 1\n```", options)).rejects.toThrow(
-      "returned 0 outputs for 1 marimo cells",
+
+    await compile(
+      { value: source, path: join(process.cwd(), "_mdx_bundler_entry_point-first.mdx") },
+      options,
+    );
+    await compile(
+      { value: source, path: join(process.cwd(), "_mdx_bundler_entry_point-second.mdx") },
+      options,
+    );
+    await compile(
+      {
+        value: source.replace("Intro", "Changed intro"),
+        path: join(process.cwd(), "_mdx_bundler_entry_point-third.mdx"),
+      },
+      options,
+    );
+
+    expect(requests.map((request) => request.filename)).toEqual([
+      "document.mdx",
+      "document.mdx",
+      "document.mdx",
+    ]);
+    expect(requests[0]!.identity).toBe(requests[1]!.identity);
+    expect(requests[0]!.identity).not.toBe(requests[2]!.identity);
+    expect(requests[0]!.identity).toMatch(/^document:/);
+  });
+
+  it("checks compiler cell count and ordering", async () => {
+    const missing: CompileOptions = {
+      jsx: true,
+      remarkPlugins: [
+        [
+          remarkMarimo,
+          {
+            compile: async () => ({
+              protocolVersion: MARIMO_PAGE_PROTOCOL_VERSION,
+              app: null,
+              cells: [],
+              diagnostics: [],
+            }),
+          },
+        ],
+      ],
+    };
+    const reordered: CompileOptions = {
+      jsx: true,
+      remarkPlugins: [
+        [
+          remarkMarimo,
+          {
+            compile: async (request: MarimoPageRequest) => {
+              const result = compiledPage(request);
+              result.cells[0]!.index = 7;
+              return result;
+            },
+          },
+        ],
+      ],
+    };
+
+    await expect(compile("```python marimo\nx = 1\n```", missing)).rejects.toThrow(
+      "returned 0 cells for 1 marimo cells",
+    );
+    await expect(compile("```python marimo\nx = 1\n```", reordered)).rejects.toThrow(
+      "returned cell 7 at position 0",
     );
   });
 
-  it("reports fence option diagnostics with source lines", async () => {
+  it("reports authoring and compiler diagnostics with source context", async () => {
     const file = await compile("```python marimo typo=true\nx = 1\n```", {
       jsx: true,
       remarkPlugins: [
         [
           remarkMarimo,
           {
-            extract: async (payload: MarimoPageRequest): Promise<MarimoPageResult> => ({
-              outputs: [
-                {
-                  html: "",
-                  appId: "diagnostic-test",
-                  cellIndex: 0,
-                  runtimeCellCount: 1,
-                  options: payload.cells[0]!.options,
-                },
+            compile: async (request: MarimoPageRequest) => ({
+              ...compiledPage(request),
+              diagnostics: [
+                { severity: "warning", message: "Compiler warning", cellIndex: 0, line: 1 },
               ],
             }),
           },
@@ -309,6 +235,31 @@ describe("remarkMarimo", () => {
 
     expect(file.messages.map((message) => String(message))).toEqual([
       "1:1: Unknown marimo option: typo",
+      "1:1: Compiler warning",
     ]);
   });
 });
+
+function compiler(inspect?: (request: MarimoPageRequest) => void): MarimoPageCompiler {
+  return async (request) => {
+    inspect?.(request);
+    return compiledPage(request);
+  };
+}
+
+function compiledPage(request: MarimoPageRequest): CompiledMarimoPage {
+  return {
+    protocolVersion: MARIMO_PAGE_PROTOCOL_VERSION,
+    app: {
+      id: "marimo-test",
+      runtimeCellCount: request.cells.length,
+      assets: { links: [], moduleScripts: [] },
+    },
+    cells: request.cells.map((cell) => ({
+      index: cell.index,
+      html: "<marimo-island></marimo-island>",
+      options: cell.options as MarimoCellOptions,
+    })),
+    diagnostics: [],
+  };
+}

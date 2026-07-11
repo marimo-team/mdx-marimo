@@ -1,14 +1,18 @@
 import mdx from "@mdx-js/rollup";
-import { marimoReactMdx } from "@marimo-team/mdx-marimo/react";
+import { remarkMarimo } from "@marimo-team/mdx-marimo/remark";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [
-    mdx({
-      providerImportSource: "@mdx-js/react",
-      remarkPlugins: [marimoReactMdx()],
-    }),
+    {
+      enforce: "pre",
+      ...mdx({
+        jsxImportSource: "react",
+        providerImportSource: "@mdx-js/react",
+        remarkPlugins: [remarkMarimo],
+      }),
+    },
     react(),
   ],
 });

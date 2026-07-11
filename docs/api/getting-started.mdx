@@ -1,0 +1,73 @@
+---
+title: Getting started
+description: Install mdx-marimo and render a reactive cell pair in an MDX page.
+---
+
+Install mdx-marimo in the application that compiles your MDX files:
+
+```bash
+pnpm add @marimo-team/mdx-marimo
+```
+
+## Connect the MDX compiler
+
+Add `remarkMarimo` to the host's remark plugins. This Fumadocs configuration
+runs the plugin for every MDX page:
+
+```ts title="source.config.ts"
+import { defineConfig } from "fumadocs-mdx/config";
+import { remarkMarimo } from "@marimo-team/mdx-marimo/remark";
+
+export default defineConfig({
+  mdxOptions: {
+    remarkPlugins: [remarkMarimo],
+  },
+});
+```
+
+Use [Framework setup](frameworks.md) for the corresponding configuration in
+Next.js, Docusaurus, Astro, React, Vue, or Nuxt.
+
+## Register the browser runtime
+
+Import the stylesheet and render `MarimoIslandRuntime` once beside the MDX
+page tree. A small client component keeps the rest of a React application
+server-renderable.
+
+```tsx title="mdx-runtime.tsx"
+"use client";
+
+import { MarimoIslandRuntime } from "@marimo-team/mdx-marimo/react";
+import "@marimo-team/mdx-marimo/styles.css";
+
+export function MdxRuntime() {
+  return <MarimoIslandRuntime />;
+}
+```
+
+## Add a page
+
+Every marimo fence in one MDX page belongs to the same notebook. Normal MDX
+can appear between dependent cells.
+
+````mdx
+```python marimo
+import marimo as mo
+
+slider = mo.ui.slider(1, 10, value=4, label="Items")
+slider
+```
+
+This paragraph belongs to the MDX host.
+
+```python marimo
+mo.md(f"The slider is set to **{slider.value}**.")
+```
+````
+
+Run the host's normal production build. `remarkMarimo` executes the page once
+and writes the initial output into the generated HTML. The browser runtime
+then hydrates both cells as one reactive notebook.
+
+Continue with [Authoring cells](authoring.md) for dependencies, SQL, Markdown,
+and cell presentation options.

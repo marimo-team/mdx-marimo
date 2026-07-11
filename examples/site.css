@@ -1,0 +1,103 @@
+:root {
+  color-scheme: light;
+  --site-background: #ffffff;
+  --site-foreground: #0f172a;
+  --site-surface: #ffffff;
+  --site-muted-surface: #f1f5f9;
+  --site-muted-foreground: #64748b;
+  --site-border: #e2e8f0;
+  --site-primary: #0880ea;
+  --site-primary-foreground: #f8fafc;
+  --site-code-background: #ffffff;
+  --site-code-foreground: #000000;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --site-background: #181c1a;
+    --site-foreground: #eceeed;
+    --site-surface: #252927;
+    --site-muted-surface: #020303;
+    --site-muted-foreground: #aab2af;
+    --site-border: #3b403e;
+    --site-primary: #28879f;
+    --site-primary-foreground: #b6ecf7;
+    --site-code-background: #282c34;
+    --site-code-foreground: #abb2bf;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--site-background);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background: var(--site-background);
+  color: var(--site-foreground);
+  font-family: "PT Sans", ui-sans-serif, system-ui, sans-serif;
+}
+
+.page {
+  width: min(100%, 740px);
+  margin-inline: auto;
+  padding: 3rem 1.5rem;
+}
+
+.page h1,
+.page h2 {
+  font-family: "Lora", ui-serif, Georgia, serif;
+  letter-spacing: 0;
+}
+
+.page h1 {
+  margin: 0 0 1rem;
+  font-size: 1.875rem;
+  line-height: 2.25rem;
+}
+
+.page h2 {
+  margin: 2rem 0 0.75rem;
+  font-size: 1.375rem;
+  line-height: 1.75rem;
+}
+
+.page p {
+  line-height: 1.75rem;
+}
+
+.page code {
+  font-family: "Fira Mono", ui-monospace, monospace;
+}
+
+.marimo-island-host {
+  --marimo-island-background: var(--site-background);
+  --marimo-island-foreground: var(--site-foreground);
+  --marimo-island-surface: var(--site-surface);
+  --marimo-island-muted-surface: var(--site-muted-surface);
+  --marimo-island-muted-foreground: var(--site-muted-foreground);
+  --marimo-island-border: var(--site-border);
+  --marimo-island-accent: var(--site-primary);
+  --marimo-island-accent-foreground: var(--site-primary-foreground);
+  --marimo-island-focus-ring: var(--site-primary);
+  --marimo-island-code-background: var(--site-code-background);
+  --marimo-island-code-foreground: var(--site-code-foreground);
+  --marimo-island-error-background: color-mix(in srgb, #ea5d5d 8%, var(--site-background));
+  --marimo-island-error-border: #ea5d5d;
+  --marimo-island-error-foreground: var(--site-foreground);
+  --marimo-island-error-accent: #ea5d5d;
+  --marimo-island-radius: 8px;
+  --marimo-island-margin-block: 1rem;
+}
+
+@media (max-width: 560px) {
+  .page {
+    padding: 2rem 1rem;
+  }
+}

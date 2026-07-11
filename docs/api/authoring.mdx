@@ -1,0 +1,146 @@
+---
+title: Authoring cells
+description: Write Python, SQL, and Markdown cells that stay reactive across an MDX page.
+---
+
+Every marimo fence on an MDX page belongs to one notebook. Normal MDX can
+appear between cells without splitting their dataflow.
+
+## Add Python cells
+
+Use a `python marimo` fence:
+
+````mdx
+```python marimo
+import marimo as mo
+
+choice = mo.ui.dropdown(["apples", "oranges"], value="apples")
+choice
+```
+
+This paragraph is normal MDX.
+
+```python marimo
+mo.md(f"Current choice: **{choice.value}**")
+```
+````
+
+Changing the dropdown reruns the second Python cell. Source order controls page
+placement, while marimo's dataflow graph controls execution order.
+
+The dotted fence form is equivalent:
+
+````mdx
+```python.marimo
+1 + 1
+```
+````
+
+## Add page dependencies
+
+Add one `marimo-config` fence to declare the Python version and packages used
+by the page:
+
+````mdx
+```marimo-config
+requires-python = ">=3.12"
+dependencies = ["altair", "pandas"]
+```
+````
+
+The config fence produces no visible page content. The build and browser
+runtime both use its project metadata.
+
+## Add SQL cells
+
+SQL cells can read dataframes and values created by Python cells:
+
+````mdx
+```python marimo
+import polars as pl
+
+sales = pl.DataFrame({
+    "region": ["North", "South"],
+    "revenue": [120, 180],
+})
+```
+
+```sql marimo query="top_regions"
+SELECT *
+FROM sales
+WHERE revenue >= 150
+```
+
+```python marimo
+mo.md(f"Rows returned: **{len(top_regions)}**")
+```
+````
+
+The `query` option names the dataframe returned by the SQL cell. Its default
+name is `_df`, which keeps the result private to that cell.
+
+## Add Markdown cells
+
+Use a `markdown marimo` fence when the Markdown itself should participate in
+the notebook:
+
+````mdx
+```markdown marimo
+## A heading rendered by marimo
+```
+````
+
+Use ordinary MDX for host-owned page content. Use a marimo Markdown cell when
+the content should be part of the notebook's execution and output model.
+
+## Control cell presentation
+
+Options follow the `marimo` marker:
+
+````mdx
+```python marimo echo=true output=true
+chart
+```
+````
+
+Common options:
+
+| Option          | Default | Result                                           |
+| --------------- | ------- | ------------------------------------------------ |
+| `echo`          | `false` | Shows the authored source as static code.        |
+| `output`        | `true`  | Shows the rendered cell output.                  |
+| `editor`        | `false` | Shows Python source in marimo's code editor.     |
+| `server-output` | `true`  | Includes build-time output while Pyodide starts. |
+| `hide-code`     | `false` | Hides source after applying `echo` and `editor`. |
+| `hide-output`   | `false` | Hides rendered output.                           |
+
+Execution and placement options:
+
+| Option       | Default | Result                                                 |
+| ------------ | ------- | ------------------------------------------------------ |
+| `eval`       | `true`  | Runs the cell. A false value disables execution.       |
+| `include`    | `true`  | Keeps rendered source and output in the page.          |
+| `disabled`   | `false` | Disables the cell and its dependents.                  |
+| `unparsable` | `false` | Preserves source as a non-reactive marimo cell.        |
+| `error`      | `true`  | Carries the error display preference into compilation. |
+| `name`       | `_`     | Sets the marimo cell name.                             |
+| `column`     | none    | Places the cell in a marimo layout column.             |
+
+SQL options:
+
+| Option   | Default | Result                         |
+| -------- | ------- | ------------------------------ |
+| `query`  | `_df`   | Names the SQL result variable. |
+| `engine` | none    | Selects the SQL engine.        |
+
+Boolean options accept `true` or `false`. Quoted values are accepted for
+strings:
+
+````mdx
+```sql marimo query="regional_sales" engine="duckdb"
+SELECT * FROM sales
+```
+````
+
+See the [JavaScript API](javascript.md) when supplying a custom compiler,
+element name, or page identity.

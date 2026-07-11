@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Read Node.js version
+        id: node-version
+        run: echo "version=$(cat .node-version)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Vite+
+        uses: voidzero-dev/setup-vp@2dec1e33f4ab2c6d5bce1b0c4607961bb1a3f7a1 # v1
+        with:
+          version: 0.2.4
+          node-version: ${{ steps.node-version.outputs.version }}
+          sfw: true
+          cache: true
+          run-install: |
+            - args: ['--frozen-lockfile']
+
+      - name: Check workspace
+        run: vp check && vp run -r typecheck
+
+      - name: Test workspace
+        run: vp run -r test
+
+      - name: Build workspace
+        run: vp run -r build

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { fenceLanguage, isMarimoConfigFence, isMarimoFence, parseFenceOptions } from "../src";
 
 describe("marimo fence metadata", () => {
@@ -59,13 +59,13 @@ describe("marimo fence metadata", () => {
     });
   });
 
-  it("marks unparsable cells as disabled for execution", () => {
+  it("preserves unparsable source and disables execution", () => {
     expect(parseFenceOptions("python", "marimo unparsable=true")).toEqual({
       diagnostics: [],
       options: {
         language: "python",
         render: {
-          source: false,
+          source: true,
           output: true,
           include: true,
           editor: false,

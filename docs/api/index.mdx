@@ -1,0 +1,33 @@
+---
+title: API reference
+description: Configure MDX compilation, cell authoring, browser hydration, and island styling.
+---
+
+mdx-marimo connects an MDX compiler to marimo's page compiler, then registers
+the emitted islands through its browser runtime.
+
+| Package entry                        | Contract                                                 |
+| ------------------------------------ | -------------------------------------------------------- |
+| `@marimo-team/mdx-marimo/remark`     | Collect and compile marimo fences during the site build. |
+| `@marimo-team/mdx-marimo/react`      | Register islands or mount protocol payloads in React.    |
+| `@marimo-team/mdx-marimo/element`    | Register the marimo custom element directly.             |
+| `@marimo-team/mdx-marimo/node`       | Compile a `MarimoPageRequest` from Node.js.              |
+| `@marimo-team/mdx-marimo/styles.css` | Load the island layout and theme property contract.      |
+
+## Pages
+
+- [Getting started](getting-started.md) installs the package and renders a
+  first reactive MDX page.
+- [Framework setup](frameworks.md) connects the build and browser hooks for
+  supported MDX hosts.
+- [Authoring cells](authoring.md) defines Python, SQL, Markdown, dependency,
+  and presentation syntax.
+- [JavaScript API](javascript.md) documents compiler, React, and custom-element
+  exports.
+- [Styling](styling.md) maps host theme tokens into marimo islands.
+
+## Build boundary
+
+`remarkMarimo` executes the page's marimo code during the site build. The
+published page contains the notebook source needed for browser hydration.
+Build trusted content and keep credentials out of cells and page setup code.

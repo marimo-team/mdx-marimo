@@ -3,5 +3,7 @@ import MdxPage from "../content/index.mdx";
 </script>
 
 <template>
-  <MdxPage />
+  <main class="page">
+    <MdxPage />
+  </main>
 </template>

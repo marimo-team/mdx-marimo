@@ -1,6 +1,11 @@
 import type { RootContent } from "mdast";
-import { marimoComponentNode, marimoElementNode } from "../mdx/nodes";
-import type { MarimoDiagnostic, MarimoPageResult } from "../schema";
+import {
+  pageCellPayload,
+  type CompiledMarimoCell,
+  type CompiledMarimoPage,
+  type MarimoDiagnostic,
+} from "@marimo-team/islands-bridge/protocol";
+import { marimoIslandNode } from "../mdx/nodes";
 
 export type ParentNode = {
   children: RootContent[];
@@ -14,20 +19,14 @@ export type TreeEdit =
   | { type: "remove"; parent: ParentNode; index: number }
   | { type: "replace"; parent: ParentNode; index: number; outputIndex: number };
 
-export type MarimoTreeEditOutput =
-  | {
-      type: "element";
-      elementName?: string;
-      theme?: "auto" | "light" | "dark";
-    }
-  | {
-      type: "component";
-      componentName: string;
-    };
+export type MarimoTreeEditOutput = {
+  elementName?: string;
+  theme?: "auto" | "light" | "dark";
+};
 
 export function applyTreeEdits(
   edits: TreeEdit[],
-  result: MarimoPageResult,
+  result: CompiledMarimoPage,
   outputMode: MarimoTreeEditOutput,
 ): boolean {
   let didReplace = false;
@@ -37,11 +36,8 @@ export function applyTreeEdits(
       edit.parent.children.splice(edit.index, 1);
       continue;
     }
-    const cellOutput = result.outputs[edit.outputIndex]!;
-    const node =
-      outputMode.type === "component"
-        ? marimoComponentNode(outputMode.componentName, cellOutput)
-        : marimoElementNode(elementNodeOptions(outputMode, cellOutput));
+    const cell = result.cells[edit.outputIndex]!;
+    const node = marimoIslandNode(islandNodeOptions(outputMode, result, cell));
     edit.parent.children.splice(edit.index, 1, node);
     didReplace = true;
   }
@@ -49,14 +45,15 @@ export function applyTreeEdits(
   return didReplace;
 }
 
-function elementNodeOptions(
-  outputMode: Extract<MarimoTreeEditOutput, { type: "element" }>,
-  cellOutput: MarimoPageResult["outputs"][number],
-): Parameters<typeof marimoElementNode>[0] {
+function islandNodeOptions(
+  outputMode: MarimoTreeEditOutput,
+  result: CompiledMarimoPage,
+  cell: CompiledMarimoCell,
+): Parameters<typeof marimoIslandNode>[0] {
   return {
     ...(outputMode.elementName === undefined ? {} : { elementName: outputMode.elementName }),
     ...(outputMode.theme === undefined ? {} : { theme: outputMode.theme }),
-    output: cellOutput,
+    payload: pageCellPayload(result, cell),
   };
 }
 

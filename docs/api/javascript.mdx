@@ -1,0 +1,131 @@
+---
+title: JavaScript API
+description: Configure MDX compilation, browser registration, and custom page compilation.
+---
+
+Most sites use `remarkMarimo`, one browser runtime entry, and the package
+stylesheet. Use the remaining APIs when the host owns element registration,
+page compilation, or a framework-specific MDX pipeline.
+
+## `remarkMarimo(options?: RemarkMarimoOptions): Plugin`
+
+Collects every marimo fence in one MDX page, compiles them as one notebook, and
+replaces each fence with a compiled marimo island element.
+
+```ts
+import { remarkMarimo } from "@marimo-team/mdx-marimo/remark";
+
+export default {
+  remarkPlugins: [remarkMarimo],
+};
+```
+
+| Option                  | Default                     | Behavior                                                             |
+| ----------------------- | --------------------------- | -------------------------------------------------------------------- |
+| `cwd`                   | `process.cwd()`             | Resolves public filenames, compilation paths, and the default cache. |
+| `element.name`          | `marimo-mdx-island`         | Sets the emitted custom-element name.                                |
+| `element.theme`         | `auto`                      | Sets `auto`, `light`, or `dark` theme behavior.                      |
+| `element.runtimeImport` | none                        | Inserts a side-effect browser import into compiled MDX.              |
+| `compile`               | `compileMarimoPage`         | Replaces the page compiler.                                          |
+| `compiler`              | `{}`                        | Configures the default compiler.                                     |
+| `identity`              | source path or content hash | Sets the stable page identity used for the marimo app ID.            |
+
+`element.theme: "auto"` follows explicit theme classes, common theme data
+attributes, and inherited `color-scheme`.
+
+## `compileMarimoPage(request, options?): Promise<CompiledMarimoPage>`
+
+Executes a `MarimoPageRequest` through the packaged Python compiler and
+returns a `CompiledMarimoPage`.
+
+```ts
+import { compileMarimoPage } from "@marimo-team/mdx-marimo/node";
+
+const page = await compileMarimoPage(request, {
+  cacheDir: ".cache/marimo",
+  timeoutMs: 300_000,
+});
+```
+
+| Option      | Default                                       | Behavior                                                    |
+| ----------- | --------------------------------------------- | ----------------------------------------------------------- |
+| `cacheDir`  | `node_modules/.cache/@marimo-team/mdx-marimo` | Stores compilation results. Set `false` to disable caching. |
+| `cwd`       | `process.cwd()`                               | Sets the `uv` working directory and default cache root.     |
+| `timeoutMs` | `300000`                                      | Terminates compilation after this duration.                 |
+| `uvCommand` | resolved `uv`                                 | Sets the executable path for this call.                     |
+
+The compiler resolves `uv` from the local package, `@manzt/uv`, or `PATH`.
+`MDX_MARIMO_UV` sets the process-wide executable.
+
+The promise rejects when the compiler process cannot start, exits with an
+error, exceeds `timeoutMs`, or returns a payload that fails protocol
+validation.
+
+Import the request and result types from the remark entry:
+
+```ts
+import type { CompiledMarimoPage, MarimoPageRequest } from "@marimo-team/mdx-marimo/remark";
+```
+
+`CompiledMarimoPage.app` contains the browser assets and notebook source
+shared by the page. `CompiledMarimoPage.cells` contains one result for every
+authored cell in source order.
+
+## `MarimoIslandRuntime(props: MarimoIslandRuntimeProps): null`
+
+Registers the default custom element after a React application hydrates.
+
+```tsx
+import { MarimoIslandRuntime } from "@marimo-team/mdx-marimo/react";
+
+<MarimoIslandRuntime />;
+```
+
+| Prop          | Default             | Behavior                                                     |
+| ------------- | ------------------- | ------------------------------------------------------------ |
+| `elementName` | `marimo-mdx-island` | Registers a custom element name that matches `element.name`. |
+
+Render the component once beside the MDX tree. It registers the element after
+React hydrates the component.
+
+## `MarimoIsland(props: MarimoIslandProps): JSX.Element`
+
+Mounts an existing `MarimoPageCellPayload` from a React client component.
+
+```tsx
+import { MarimoIsland } from "@marimo-team/mdx-marimo/react";
+
+<MarimoIsland payload={payload} className="analysis-cell" theme="auto" />;
+```
+
+| Prop        | Default  | Behavior                                                     |
+| ----------- | -------- | ------------------------------------------------------------ |
+| `payload`   | required | Supplies the app record and compiled cell.                   |
+| `className` | none     | Adds a class to the island host.                             |
+| `style`     | none     | Adds React styles, including `--marimo-island-*` properties. |
+| `theme`     | `auto`   | Selects `auto`, `light`, or `dark`.                          |
+
+Use this component when an application already owns protocol payloads.
+Compiled MDX pages normally use `MarimoIslandRuntime`. The component mounts
+the payload after hydration and releases the island when it unmounts or its
+payload changes.
+
+## `defineMarimoIslandElement(name?: string): CustomElementConstructor | undefined`
+
+Registers the custom element directly and returns its constructor.
+
+```ts
+import { defineMarimoIslandElement } from "@marimo-team/mdx-marimo/element";
+
+defineMarimoIslandElement();
+```
+
+The function returns the existing constructor when the name is already
+registered. It returns `undefined` when the DOM custom-elements API is
+unavailable.
+
+Import `@marimo-team/mdx-marimo/element/auto` from a browser entry to register
+the default element as a side effect.
+
+See [Authoring cells](authoring.md) for fence forms and cell options. See
+[Styling](styling.md) for the public CSS properties.

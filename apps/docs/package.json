@@ -4,34 +4,40 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "pnpm run build:deps && next build",
-    "build:deps": "pnpm --filter \"$npm_package_name^...\" --if-present build",
-    "clean": "rm -rf .marimo-cache .next .source out && find content/docs -type d -name __marimo__ -prune -exec rm -rf {} +",
-    "dev": "pnpm run build:deps && next dev -H 127.0.0.1 -p 4100",
-    "lint": "oxlint app components lib source.config.ts --deny-warnings",
+    "build": "vite build && cp .output/public/_shell.html .output/public/index.html",
+    "clean": "rm -rf .output .source dist",
+    "dev": "vite dev --host 127.0.0.1 --port 4100",
+    "predev": "vp run -t @marimo-team/mdx-marimo#build",
+    "pretypecheck": "vp run -t @marimo-team/mdx-marimo#build",
+    "serve": "vite preview --host 127.0.0.1 --port 4100 --strictPort",
     "source": "fumadocs-mdx",
-    "typecheck": "pnpm run build:deps && pnpm run source && tsc --noEmit"
+    "typecheck": "fumadocs-mdx && tsc --noEmit"
   },
   "dependencies": {
     "@marimo-team/mdx-marimo": "workspace:*",
+    "@orama/orama": "^3.1.18",
+    "@tanstack/react-router": "1.170.17",
+    "@tanstack/react-start": "1.168.27",
     "cnfast": "^0.0.8",
     "fumadocs-core": "^16.10.7",
     "fumadocs-mdx": "^15.0.13",
     "fumadocs-ui": "^16.10.7",
     "lucide-react": "^1.23.0",
-    "next": "16.2.10",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "seroval": "1.5.4"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.3.2",
+    "@tailwindcss/vite": "^4.3.2",
     "@types/mdx": "^2.0.14",
     "@types/node": "^26.1.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
-    "postcss": "^8.5.16",
-    "serve": "^14.2.6",
+    "@vitejs/plugin-react": "^6.0.3",
+    "nitro": "3.0.260610-beta",
+    "srvx": "^0.11.21",
     "tailwindcss": "^4.3.2",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vite": "8.1.3"
   }
 }
