@@ -133,9 +133,10 @@ outputs. SQL and Markdown conversions happen before the marimo IR boundary.
 ### 5. Project results back into MDX
 
 [`applyTreeEdits`](../packages/mdx-marimo/src/remark/edits.ts) replaces each
-authored fence with one MDX custom-element node. The node contains a
-`MarimoPageCellPayload` with the shared app record and that cell's compiled
-result.
+authored fence with one MDX custom-element node. On a reactive page, the first
+projected cell carries the shared app record in a `MarimoPageCellPayload`.
+Later cells carry their compiled result and an `appId` reference to that
+record. Static cells remain self-contained.
 
 Edits run in reverse tree order so replacing one node does not invalidate the
 recorded indexes of later nodes.
@@ -143,13 +144,18 @@ recorded indexes of later nodes.
 ### 6. Mount and hydrate in the browser
 
 [`defineMarimoIslandElement`](../packages/islands-bridge/src/element/index.ts)
-registers the custom element. It reads and validates the encoded payload, then
-calls [`mountMarimoIsland`](../packages/islands-bridge/src/browser/island.ts).
+registers the custom element. It reads and validates the encoded payload, mounts
+build-time HTML immediately, and resolves app references when the carrier cell
+connects.
 
 Mounting writes the build-time HTML into the host before loading runtime
 assets. [`ensureAssets`](../packages/islands-bridge/src/browser/assets.ts)
-deduplicates links, head tags, module imports, and app initialization. The
-theme bridge tracks the host theme while the island is connected.
+deduplicates links, head tags, module imports, and app initialization. Each
+mounted reactive cell holds an asset lease. A runtime that supports app
+replacement can release the document-navigation fallback and detach the app
+after its final lease is released. Static cells render their compiled HTML and
+theme directly. The theme bridge tracks the host theme while the island is
+connected.
 
 ## Invariants
 
@@ -162,7 +168,7 @@ Changes across the pipeline must preserve these contracts:
 5. App assets and notebook source live at page level, not on individual cells.
 6. Every island on a page uses the same stable app ID.
 7. Build-time HTML remains visible until browser hydration replaces or connects it.
-8. Runtime assets and app initialization are deduplicated across page islands.
+8. Runtime assets, app initialization, and app teardown are coordinated across page islands.
 9. Host parsing and AST projection stay outside `islands-bridge`.
 10. `element/auto` remains a self-contained browser entry with no bare workspace imports.
 
