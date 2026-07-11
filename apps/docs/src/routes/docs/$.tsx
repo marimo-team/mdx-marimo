@@ -1,7 +1,8 @@
 import { createDocsLink, getMDXComponents } from "@/components/mdx";
 import { getPageDirectory, source } from "@/lib/source";
+import { staticFunctionMiddleware } from "@/lib/static-function-middleware";
 import { baseOptions } from "@/lib/layout.shared";
-import { staticFunctionMiddleware } from "@tanstack/start-static-server-functions";
+import { MarimoIslandRuntime } from "@marimo-team/mdx-marimo/react";
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import browserCollections from "collections/browser";
@@ -62,7 +63,10 @@ function Page() {
 
   return (
     <DocsLayout {...baseOptions()} tree={pageTree}>
-      <Suspense>{clientLoader.useContent(path, { directory })}</Suspense>
+      <Suspense>
+        {clientLoader.useContent(path, { directory })}
+        <MarimoIslandRuntime />
+      </Suspense>
     </DocsLayout>
   );
 }

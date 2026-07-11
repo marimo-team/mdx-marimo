@@ -1,10 +1,9 @@
-import { createRootRoute, HeadContent, Outlet, Scripts, useParams, useRouterState } from "@tanstack/react-router";
-import { useEffect, useMemo } from "react";
+import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
 import SearchDialog from "@/components/search";
 import { withBasePath } from "@/lib/base-path";
 import appCss from "@/styles/app.css?url";
-import { FrameworkProvider, type Framework, type Router } from "fumadocs-core/framework";
-import { RootProvider } from "fumadocs-ui/provider/base";
+import type { Framework } from "fumadocs-core/framework";
+import { RootProvider } from "fumadocs-ui/provider/tanstack";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -32,17 +31,9 @@ function RootComponent() {
         <HeadContent />
       </head>
       <body className="flex min-h-screen flex-col">
-        <FrameworkProvider
-          Link={DocsLink}
-          useParams={useDocsParams}
-          usePathname={useDocsPathname}
-          useRouter={useDocsRouter}
-        >
-          <RootProvider search={{ SearchDialog }}>
-            <MarimoRuntime />
-            <Outlet />
-          </RootProvider>
-        </FrameworkProvider>
+        <RootProvider components={{ Link: DocsLink }} search={{ SearchDialog }}>
+          <Outlet />
+        </RootProvider>
         <Scripts />
       </body>
     </html>
@@ -52,33 +43,3 @@ function RootComponent() {
 const DocsLink: NonNullable<Framework["Link"]> = ({ href, prefetch: _prefetch, ...props }) => {
   return <a href={href ? withBasePath(href) : href} {...props} />;
 };
-
-function useDocsPathname() {
-  return useRouterState({ select: (state) => state.location.pathname });
-}
-
-function useDocsParams() {
-  return useParams({ strict: false }) as Record<string, string | string[]>;
-}
-
-function useDocsRouter(): Router {
-  return useMemo(
-    () => ({
-      push(url) {
-        window.location.assign(withBasePath(url));
-      },
-      refresh() {
-        window.location.reload();
-      },
-    }),
-    [],
-  );
-}
-
-function MarimoRuntime() {
-  useEffect(() => {
-    void import("@marimo-team/mdx-marimo/element/auto");
-  }, []);
-
-  return null;
-}

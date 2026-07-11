@@ -5,10 +5,8 @@ import mdx from "fumadocs-mdx/vite";
 import { nitro } from "nitro/vite";
 import { defineConfig } from "vite";
 
-const basePath = process.env.BASE_PATH?.replace(/\/$/, "") ?? "";
-
-export default defineConfig({
-  base: basePath ? `${basePath}/` : "/",
+export default defineConfig(({ command }) => ({
+  base: command === "build" ? "/mdx-marimo/" : "/",
   server: {
     host: "127.0.0.1",
     port: 4100,
@@ -37,12 +35,9 @@ export default defineConfig({
       ],
     }),
     react(),
-    nitro(),
+    nitro({ baseURL: command === "build" ? "/mdx-marimo/" : "/" }),
   ],
   resolve: {
     tsconfigPaths: true,
-    alias: {
-      tslib: "tslib/tslib.es6.js",
-    },
   },
-});
+}));
