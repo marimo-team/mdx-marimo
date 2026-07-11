@@ -1,18 +1,15 @@
 import "@marimo-team/mdx-marimo/styles.css";
+import "../../../site.css";
 import marimoElementRuntimeUrl from "@marimo-team/mdx-marimo/element/auto?url";
 
 <script type="module" src={marimoElementRuntimeUrl}></script>
 
-```marimo-config
-requires-python = ">=3.11"
-dependencies = ["wigglystuff"]
-```
+<main class="page">
 
 # Astro MDX marimo
 
 ```python marimo output=false
 import marimo as mo
-from wigglystuff import Slider2D
 ```
 
 ```python marimo
@@ -24,9 +21,4 @@ slider
 mo.md(f"The slider is set to **{slider.value}**.")
 ```
 
-## Third-party widget
-
-```python marimo server-output=false
-slider_2d = mo.ui.anywidget(Slider2D(x=0.5, y=0.5, x_bounds=(0.0, 1.0), y_bounds=(0.0, 1.0)))
-slider_2d
-```
+</main>
