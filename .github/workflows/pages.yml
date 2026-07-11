@@ -37,13 +37,13 @@ jobs:
             - args: ['--frozen-lockfile']
 
       - name: Configure GitHub Pages
-        uses: actions/configure-pages@45bfe168e8c8144b9e0cda9c7b3152f945af8e63 # v6
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
 
       - name: Build docs
         run: vp run -t @marimo-team/mdx-marimo-docs#build
 
       - name: Upload GitHub Pages artifact
-        uses: actions/upload-pages-artifact@fc324e79d6c72123eb7a4cb3c4c729ad62aa84b9 # v5
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: apps/docs/.output/public
 
@@ -62,6 +62,6 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@cd2ce478ecb4fbf3999f9e7f1ceac8c3eebbd34f # v5
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
         with:
           artifact_name: github-pages
