@@ -3,7 +3,7 @@ packages:
   - "examples/*"
   - "packages/*"
 nodeLinker: hoisted
-minimumReleaseAge: 1440
+minimumReleaseAge: 20160
 minimumReleaseAgeExclude:
   - "@marimo-team/*"
 allowBuilds:
@@ -12,3 +12,7 @@ allowBuilds:
   core-js: true
   esbuild: true
   sharp: true
+verifyDepsBeforeRun: install
+blockExoticSubdeps: true
+trustPolicy: no-downgrade
+onlyBuiltDependencies: []
