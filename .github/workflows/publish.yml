@@ -5,8 +5,7 @@ on:
     tags:
       - "v*.*.*"
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   group: publish
@@ -67,6 +66,8 @@ jobs:
           path: dist/npm/marimo-team-mdx-marimo-*.tgz
           retention-days: 1
           if-no-files-found: error
+    permissions:
+      contents: read
 
   publish:
     name: Publish to npm

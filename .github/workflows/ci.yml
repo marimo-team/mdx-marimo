@@ -5,8 +5,7 @@ on:
     branches: [main]
   pull_request:
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
   verify:
@@ -37,3 +36,5 @@ jobs:
 
       - name: Build workspace
         run: vp run -r build
+    permissions:
+      contents: read
