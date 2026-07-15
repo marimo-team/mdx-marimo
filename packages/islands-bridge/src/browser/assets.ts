@@ -2,7 +2,7 @@ import type { MarimoRuntimeAssets, MarimoPageRuntime } from "../protocol";
 
 type MarimoIslandModule = {
   initialize?: () => Promise<void> | void;
-  canReplaceApp?: boolean | (() => boolean);
+  canReplaceApp?: () => boolean;
   stopApp?: (appId?: string) => Promise<void> | void;
 };
 
@@ -14,13 +14,16 @@ export type MarimoAssetsLease = {
 type AppAssetsState = {
   active: boolean;
   activeRevision?: string;
-  activation?: Promise<MarimoIslandModule[]>;
   deactivation?: Promise<void>;
   modules?: MarimoIslandModule[];
   references: number;
 };
 
 type RuntimeDocumentState = {
+  activeApp?: { appId: string; revision: string };
+  activation?: Promise<void>;
+  appAssets: Map<string, AppAssetsState>;
+  firstInitializedAppId?: string;
   key?: string;
   reload?: Promise<never>;
 };
@@ -41,9 +44,7 @@ declare global {
 
 const loadedModules = new Map<string, Promise<MarimoIslandModule>>();
 const resolvedModules = new Map<string, MarimoIslandModule>();
-const appAssets = new Map<string, AppAssetsState>();
 const runtimeStateSymbol = Symbol.for("@marimo-team/islands-bridge/runtime-state");
-let firstInitializedAppId: string | undefined;
 
 export function hasConfirmedSoftNavigationAssets(app: MarimoPageRuntime): boolean {
   if (!matchesRuntime(app.assets)) return false;
@@ -65,6 +66,7 @@ export async function ensureAssets(app: MarimoPageRuntime): Promise<MarimoAssets
   ensureHeadTags(assets.headTags ?? []);
   ensureLinks(assets.links);
 
+  const appAssets = runtimeDocumentState().appAssets;
   const state = appAssets.get(app.id) ?? {
     active: false,
     references: 0,
@@ -77,6 +79,9 @@ export async function ensureAssets(app: MarimoPageRuntime): Promise<MarimoAssets
     return createLease(app.id, state, modules);
   } catch (error) {
     state.references -= 1;
+    if (state.references === 0 && !state.active && appAssets.get(app.id) === state) {
+      appAssets.delete(app.id);
+    }
     throw error;
   }
 }
@@ -85,7 +90,7 @@ function runtimeDocumentState(): RuntimeDocumentState {
   const target = window as typeof window & {
     [key: symbol]: RuntimeDocumentState | undefined;
   };
-  return (target[runtimeStateSymbol] ??= {});
+  return (target[runtimeStateSymbol] ??= { appAssets: new Map() });
 }
 
 function runtimeKey(assets: MarimoRuntimeAssets): string {
@@ -122,15 +127,32 @@ async function activateApp(
   state: AppAssetsState,
 ): Promise<MarimoIslandModule[]> {
   const revision = appRevision(app);
-  while (state.activation) await state.activation;
-  if (state.active && state.modules && state.activeRevision === revision) {
+  const documentState = runtimeDocumentState();
+  if (
+    !documentState.activation &&
+    state.active &&
+    state.modules &&
+    state.activeRevision === revision &&
+    documentState.activeApp?.appId === app.id &&
+    documentState.activeApp.revision === revision
+  ) {
     return state.modules;
   }
 
-  const activation = (async () => {
+  return enqueueRuntimeActivation(async () => {
     await state.deactivation;
-    const isFirstApp = firstInitializedAppId === undefined;
-    firstInitializedAppId ??= app.id;
+    if (
+      state.active &&
+      state.modules &&
+      state.activeRevision === revision &&
+      documentState.activeApp?.appId === app.id &&
+      documentState.activeApp.revision === revision
+    ) {
+      return state.modules;
+    }
+
+    const isFirstApp = documentState.firstInitializedAppId === undefined;
+    documentState.firstInitializedAppId ??= app.id;
     const modules =
       state.modules ?? (await Promise.all(app.assets.moduleScripts.map(ensureModule)));
     state.modules = modules;
@@ -139,20 +161,29 @@ async function activateApp(
     if (!isFirstApp || softNavigation) {
       state.active = false;
       delete state.activeRevision;
+      delete documentState.activeApp;
       ensureExportContext(app.notebookCode);
       await Promise.all(modules.map(async (runtimeModule) => runtimeModule.initialize?.()));
     }
     state.active = true;
     state.activeRevision = revision;
+    documentState.activeApp = { appId: app.id, revision };
     return modules;
-  })();
-  state.activation = activation;
+  });
+}
 
-  try {
-    return await activation;
-  } finally {
-    if (state.activation === activation) delete state.activation;
-  }
+function enqueueRuntimeActivation<T>(operation: () => Promise<T>): Promise<T> {
+  const state = runtimeDocumentState();
+  const activation = (state.activation ?? Promise.resolve()).then(operation);
+  const tail = activation.then(
+    () => undefined,
+    () => undefined,
+  );
+  state.activation = tail;
+  void tail.then(() => {
+    if (state.activation === tail) delete state.activation;
+  });
+  return activation;
 }
 
 function appRevision(app: MarimoPageRuntime): string {
@@ -168,6 +199,7 @@ function createLease(
   state: AppAssetsState,
   modules: MarimoIslandModule[],
 ): MarimoAssetsLease {
+  const appAssets = runtimeDocumentState().appAssets;
   const softNavigation = supportsSoftNavigation(modules);
   let released = false;
   return {
@@ -180,7 +212,16 @@ function createLease(
 
       queueMicrotask(() => {
         if (state.references > 0 || !state.active) return;
+        const revision = state.activeRevision;
         state.active = false;
+        delete state.activeRevision;
+        const documentState = runtimeDocumentState();
+        if (
+          documentState.activeApp?.appId === appId &&
+          documentState.activeApp.revision === revision
+        ) {
+          delete documentState.activeApp;
+        }
         state.deactivation = Promise.all(
           modules.map(async (runtimeModule) => runtimeModule.stopApp?.(appId)),
         )
@@ -205,9 +246,7 @@ function supportsSoftNavigation(modules: MarimoIslandModule[]): boolean {
     runtimes.length > 0 &&
     runtimes.every(
       (runtimeModule) =>
-        (runtimeModule.canReplaceApp === true ||
-          (typeof runtimeModule.canReplaceApp === "function" && runtimeModule.canReplaceApp())) &&
-        typeof runtimeModule.stopApp === "function",
+        runtimeModule.canReplaceApp?.() === true && typeof runtimeModule.stopApp === "function",
     )
   );
 }

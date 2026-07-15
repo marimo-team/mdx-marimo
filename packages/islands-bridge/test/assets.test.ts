@@ -68,6 +68,41 @@ describe("ensureAssets", () => {
     ]);
   });
 
+  it("reactivates the last app requested during rapid navigation", async () => {
+    const { ensureAssets } = await import("../src/browser/assets");
+    const moduleScript = moduleUrl(`
+      export function canReplaceApp() {
+        return true;
+      }
+      export function initialize() {
+        globalThis.__marimoAssetEvents.push(
+          "initialize:" + globalThis.window.__MARIMO_EXPORT_CONTEXT__.notebookCode,
+        );
+      }
+      export function stopApp() {}
+    `);
+    const firstApp = {
+      ...app("first-app", moduleScript),
+      notebookCode: "first",
+    };
+    const secondApp = {
+      ...app("second-app", moduleScript),
+      notebookCode: "second",
+    };
+
+    const first = await ensureAssets(firstApp);
+    const secondPending = ensureAssets(secondApp);
+    const firstAgainPending = ensureAssets(firstApp);
+    const [second, firstAgain] = await Promise.all([secondPending, firstAgainPending]);
+
+    expect(assetEvents()).toEqual(["initialize:first", "initialize:second", "initialize:first"]);
+
+    first.release();
+    second.release();
+    firstAgain.release();
+    await flushMicrotasks();
+  });
+
   it("keeps first-page initialization owned by a legacy runtime module", async () => {
     const { ensureAssets, hasConfirmedSoftNavigationAssets } =
       await import("../src/browser/assets");
@@ -350,6 +385,38 @@ describe("ensureAssets", () => {
 
     expect(window.location.reload).toHaveBeenCalledOnce();
     await expectPending(pending);
+  });
+
+  it("shares app leases across bridge module instances", async () => {
+    const firstBridge = await import("../src/browser/assets");
+    const runtime = app(
+      "shared-app",
+      moduleUrl(`
+        export function canReplaceApp() {
+          return true;
+        }
+        export function initialize() {
+          globalThis.__marimoAssetEvents.push("initialize");
+        }
+        export function stopApp(appId) {
+          globalThis.__marimoAssetEvents.push("stop:" + appId);
+        }
+      `),
+    );
+    const first = await firstBridge.ensureAssets(runtime);
+
+    vi.resetModules();
+    const secondBridge = await import("../src/browser/assets");
+    const second = await secondBridge.ensureAssets(runtime);
+
+    expect(assetEvents()).toEqual(["initialize"]);
+    first.release();
+    await flushMicrotasks();
+    expect(assetEvents()).toEqual(["initialize"]);
+
+    second.release();
+    await flushMicrotasks();
+    expect(assetEvents()).toEqual(["initialize", "stop:shared-app"]);
   });
 });
 
