@@ -1,6 +1,8 @@
 import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
 import SearchDialog from "@/components/search";
+import { withBasePath } from "@/lib/base-path";
 import appCss from "@/styles/app.css?url";
+import type { Framework } from "fumadocs-core/framework";
 import { RootProvider } from "fumadocs-ui/provider/tanstack";
 
 export const Route = createRootRoute({
@@ -29,7 +31,7 @@ function RootComponent() {
         <HeadContent />
       </head>
       <body className="flex min-h-screen flex-col">
-        <RootProvider search={{ SearchDialog }}>
+        <RootProvider components={{ Link: DocsLink }} search={{ SearchDialog }}>
           <Outlet />
         </RootProvider>
         <Scripts />
@@ -37,3 +39,7 @@ function RootComponent() {
     </html>
   );
 }
+
+const DocsLink: NonNullable<Framework["Link"]> = ({ href, prefetch: _prefetch, ...props }) => {
+  return <a href={href ? withBasePath(href) : href} {...props} />;
+};
