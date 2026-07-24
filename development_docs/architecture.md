@@ -48,9 +48,10 @@ connects publishing source, compiled cells, host lifecycle, and that executor.
 - the conversion from `MarimoPageRequest` to marimo IR
 - MDX custom-element nodes
 - the React hydration entry
+- the VitePress Markdown adapter
 
-Framework examples configure this adapter through the host's native MDX
-compiler and runtime entrypoints.
+Framework examples configure these adapters through the host's Markdown or
+MDX compiler and runtime entrypoints.
 
 ## End-to-end pipeline
 
@@ -167,14 +168,15 @@ Changes across the pipeline must preserve these contracts:
 
 ## Source map
 
-| Responsibility                  | Owning source                                                                         |
-| ------------------------------- | ------------------------------------------------------------------------------------- |
-| Protocol types and guards       | [`packages/islands-bridge/src/protocol`](../packages/islands-bridge/src/protocol)     |
-| Browser app and asset lifecycle | [`packages/islands-bridge/src/browser`](../packages/islands-bridge/src/browser)       |
-| Custom-element factory          | [`packages/islands-bridge/src/element`](../packages/islands-bridge/src/element)       |
-| Shared CSS                      | [`packages/islands-bridge/src/styling`](../packages/islands-bridge/src/styling)       |
-| Fence syntax and options        | [`packages/mdx-marimo/src/authoring`](../packages/mdx-marimo/src/authoring)           |
-| Page collection and MDX edits   | [`packages/mdx-marimo/src/remark`](../packages/mdx-marimo/src/remark)                 |
-| Node compiler boundary          | [`packages/mdx-marimo/src/node`](../packages/mdx-marimo/src/node)                     |
-| React hydration adapter         | [`packages/mdx-marimo/src/adapters/react`](../packages/mdx-marimo/src/adapters/react) |
-| Host integration fixtures       | [`examples`](../examples)                                                             |
+| Responsibility                  | Owning source                                                                                 |
+| ------------------------------- | --------------------------------------------------------------------------------------------- |
+| Protocol types and guards       | [`packages/islands-bridge/src/protocol`](../packages/islands-bridge/src/protocol)             |
+| Browser app and asset lifecycle | [`packages/islands-bridge/src/browser`](../packages/islands-bridge/src/browser)               |
+| Custom-element factory          | [`packages/islands-bridge/src/element`](../packages/islands-bridge/src/element)               |
+| Shared CSS                      | [`packages/islands-bridge/src/styling`](../packages/islands-bridge/src/styling)               |
+| Fence syntax and options        | [`packages/mdx-marimo/src/authoring`](../packages/mdx-marimo/src/authoring)                   |
+| Page collection and MDX edits   | [`packages/mdx-marimo/src/remark`](../packages/mdx-marimo/src/remark)                         |
+| Node compiler boundary          | [`packages/mdx-marimo/src/node`](../packages/mdx-marimo/src/node)                             |
+| React hydration adapter         | [`packages/mdx-marimo/src/adapters/react`](../packages/mdx-marimo/src/adapters/react)         |
+| VitePress Markdown adapter      | [`packages/mdx-marimo/src/adapters/vitepress`](../packages/mdx-marimo/src/adapters/vitepress) |
+| Host integration fixtures       | [`examples`](../examples)                                                                     |

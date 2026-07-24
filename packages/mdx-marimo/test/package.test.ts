@@ -38,6 +38,11 @@ describe("package metadata", () => {
       import: "./dist/adapters/react/index.js",
       default: "./dist/adapters/react/index.js",
     });
+    expect(packageJson.exports?.["./vitepress"]).toEqual({
+      types: "./dist/adapters/vitepress/index.d.ts",
+      import: "./dist/adapters/vitepress/index.js",
+      default: "./dist/adapters/vitepress/index.js",
+    });
     expect(packageJson.exports?.["./node"]).toBeDefined();
     expect(packageJson.exports?.["./adapters/react"]).toBeUndefined();
   });

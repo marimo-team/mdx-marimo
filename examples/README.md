@@ -10,6 +10,7 @@ Each folder contains a runnable integration.
 | Next.js        | [`with-next`](./with-next)             |
 | Nuxt           | [`with-nuxt`](./with-nuxt)             |
 | React and Vite | [`with-react`](./with-react)           |
+| VitePress      | [`with-vitepress`](./with-vitepress)   |
 | Vue and Vite   | [`with-vue`](./with-vue)               |
 
 Use the same integration pattern with any host that supports

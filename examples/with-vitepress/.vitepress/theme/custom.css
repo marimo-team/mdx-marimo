@@ -1,0 +1,15 @@
+.marimo-island-host {
+  --marimo-island-background: var(--vp-c-bg);
+  --marimo-island-foreground: var(--vp-c-text-1);
+  --marimo-island-surface: var(--vp-c-bg-elv);
+  --marimo-island-muted-surface: var(--vp-c-bg-soft);
+  --marimo-island-muted-foreground: var(--vp-c-text-2);
+  --marimo-island-border: var(--vp-c-divider);
+  --marimo-island-accent: var(--vp-c-brand-1);
+  --marimo-island-accent-foreground: var(--vp-button-brand-text);
+  --marimo-island-focus-ring: var(--vp-c-brand-2);
+  --marimo-island-code-background: var(--vp-code-block-bg);
+  --marimo-island-code-foreground: var(--vp-c-text-1);
+  --marimo-island-margin-block: 1rem;
+  --marimo-island-radius: 6px;
+}

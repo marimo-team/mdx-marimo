@@ -1,6 +1,6 @@
 ---
 title: Framework setup
-description: Connect mdx-marimo to React, Next.js, Fumadocs, Docusaurus, Astro, Vue, or Nuxt.
+description: Connect mdx-marimo to React, Next.js, Fumadocs, Docusaurus, VitePress, Astro, Vue, or Nuxt.
 ---
 
 Connect mdx-marimo at build time and after the page reaches the browser:
@@ -128,6 +128,50 @@ export default defineConfig({
 
 See the complete [React
 example](https://github.com/marimo-team/mdx-marimo/tree/main/examples/with-react).
+
+## VitePress
+
+Add `marimoVitePress` to the Vite plugins in the VitePress config. Mark the
+emitted island tag as a custom element so Vue keeps it as a browser element.
+
+```ts title=".vitepress/config.ts"
+import { marimoVitePress } from "@marimo-team/mdx-marimo/vitepress";
+import { defineConfig } from "vitepress";
+
+export default defineConfig({
+  vite: {
+    plugins: [marimoVitePress()],
+  },
+  vue: {
+    template: {
+      compilerOptions: {
+        isCustomElement: (tag) => tag === "marimo-mdx-island",
+      },
+    },
+  },
+});
+```
+
+Load the stylesheet and browser entry from the VitePress theme:
+
+```ts title=".vitepress/theme/index.ts"
+import "@marimo-team/mdx-marimo/element/auto";
+import "@marimo-team/mdx-marimo/styles.css";
+import DefaultTheme from "vitepress/theme";
+
+export default DefaultTheme;
+```
+
+`marimoVitePress` compiles all marimo fences in one Markdown page as one app.
+Its `theme` option accepts `auto`, `light`, or `dark`.
+
+Declare Python packages in a `marimo-config` fence. The compiler installs each
+dependency and includes the requirement in the browser notebook. The example
+loads `wigglystuff` and renders its
+[`Slider2D`](https://koaning.github.io/wigglystuff/reference/slider2d/) widget.
+
+See the complete [VitePress
+example](https://github.com/marimo-team/mdx-marimo/tree/main/examples/with-vitepress).
 
 ## Astro
 

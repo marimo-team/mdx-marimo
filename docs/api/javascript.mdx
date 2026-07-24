@@ -33,6 +33,32 @@ export default {
 `element.theme: "auto"` follows explicit theme classes, common theme data
 attributes, and inherited `color-scheme`.
 
+## `marimoVitePress(options?: MarimoVitePressOptions): Plugin`
+
+Compiles marimo fences during VitePress's Markdown transform and emits
+`marimo-mdx-island` elements for the visible cells.
+
+```ts
+import { marimoVitePress } from "@marimo-team/mdx-marimo/vitepress";
+
+export default {
+  vite: {
+    plugins: [marimoVitePress()],
+  },
+};
+```
+
+| Option     | Default                     | Behavior                                                             |
+| ---------- | --------------------------- | -------------------------------------------------------------------- |
+| `cwd`      | `process.cwd()`             | Resolves public filenames, compilation paths, and the default cache. |
+| `theme`    | `auto`                      | Sets `auto`, `light`, or `dark` theme behavior.                      |
+| `compile`  | `compileMarimoPage`         | Replaces the page compiler.                                          |
+| `compiler` | `{}`                        | Configures the default compiler.                                     |
+| `identity` | source path or content hash | Sets the stable page identity used for the marimo app ID.            |
+
+Configure Vue's `isCustomElement` option and load the browser entry as shown
+in [Framework setup](frameworks.md#vitepress).
+
 ## `compileMarimoPage(request, options?): Promise<CompiledMarimoPage>`
 
 Executes a `MarimoPageRequest` through the packaged Python compiler and
