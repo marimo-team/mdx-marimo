@@ -39,6 +39,7 @@ framework boundaries.
 - compiler request and result contracts
 - Node compiler process behavior
 - the React hydration adapter
+- the VitePress Markdown adapter
 - package exports
 
 Prefer assertions through public functions, protocol values, emitted mdast
@@ -87,6 +88,7 @@ Browser validation should cover the docs app and every example:
 | Next.js    | the React boundary registers once and the page stays server-renderable        |
 | Docusaurus | page navigation creates a page-scoped app and follows the host theme          |
 | Nuxt       | the client registration hydrates all cells as one app                         |
+| VitePress  | nested fences hydrate, page navigation creates separate apps, theme follows   |
 
 Check both light and dark themes. Check a narrow mobile viewport and assert that
 the document has no horizontal overflow. Inspect browser errors after hydration

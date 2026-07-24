@@ -94,4 +94,5 @@ Working integrations are available for
 [Next.js](https://github.com/marimo-team/mdx-marimo/tree/main/examples/with-next),
 [Nuxt](https://github.com/marimo-team/mdx-marimo/tree/main/examples/with-nuxt),
 [React](https://github.com/marimo-team/mdx-marimo/tree/main/examples/with-react),
+[VitePress](https://github.com/marimo-team/mdx-marimo/tree/main/examples/with-vitepress),
 and [Vue](https://github.com/marimo-team/mdx-marimo/tree/main/examples/with-vue).
