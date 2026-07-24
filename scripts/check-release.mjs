@@ -56,6 +56,7 @@ try {
         `${packageName}/element/auto`,
         `${packageName}/node`,
         `${packageName}/react`,
+        `${packageName}/vitepress`,
       ])};`,
       "for (const subpath of subpaths) await import(subpath);",
       "console.log(`Imported ${subpaths.length} public JavaScript subpaths`);",

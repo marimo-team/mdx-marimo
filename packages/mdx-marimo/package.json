@@ -1,6 +1,6 @@
 {
   "name": "@marimo-team/mdx-marimo",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Add reactive Python, SQL, and Markdown cells to MDX pages.",
   "keywords": [
     "marimo",

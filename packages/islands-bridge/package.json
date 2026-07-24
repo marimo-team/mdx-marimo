@@ -1,6 +1,6 @@
 {
   "name": "@marimo-team/islands-bridge",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "description": "Host-neutral page protocol and browser bridge for publishing reactive marimo islands.",
   "keywords": [
