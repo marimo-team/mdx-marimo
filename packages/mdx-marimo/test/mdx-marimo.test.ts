@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import {
   MARIMO_PAGE_PROTOCOL_VERSION,
+  isMarimoPageCellPayload,
+  isMarimoPageCellReferencePayload,
   type CompiledMarimoPage,
   type MarimoCellOptions,
   type MarimoPageCompiler,
@@ -72,6 +74,39 @@ describe("remarkMarimo", () => {
     expect(compiled).toContain('import "marimo-runtime/auto"');
     expect(compiled).toContain("<marimo-example-island ");
     expect(compiled).toContain('data-marimo-theme-mode="dark"');
+  });
+
+  it("serializes the page app once and references it from later cells", async () => {
+    const file = await compile(
+      ["```python marimo", "x = 1", "```", "", "```python marimo", "x + 1", "```"].join("\n"),
+      {
+        jsx: true,
+        remarkPlugins: [
+          [
+            remarkMarimo,
+            {
+              compile: async (request: MarimoPageRequest) => {
+                const result = compiledPage(request);
+                result.app!.notebookCode = "shared notebook source";
+                return result;
+              },
+            },
+          ],
+        ],
+      },
+    );
+
+    const payloads = emittedPayloads(String(file));
+
+    expect(payloads).toHaveLength(2);
+    expect(isMarimoPageCellPayload(payloads[0])).toBe(true);
+    expect(isMarimoPageCellReferencePayload(payloads[1])).toBe(true);
+    expect(payloads[0]).toMatchObject({
+      app: { id: "marimo-test", notebookCode: "shared notebook source" },
+      cell: { index: 0 },
+    });
+    expect(payloads[1]).toMatchObject({ appId: "marimo-test", cell: { index: 1 } });
+    expect(JSON.stringify(payloads).match(/shared notebook source/g)).toHaveLength(1);
   });
 
   it("keeps ordinary fences and nested MDX structure intact", async () => {
@@ -245,6 +280,12 @@ function compiler(inspect?: (request: MarimoPageRequest) => void): MarimoPageCom
     inspect?.(request);
     return compiledPage(request);
   };
+}
+
+function emittedPayloads(compiled: string): unknown[] {
+  return Array.from(compiled.matchAll(/data-marimo-payload="([A-Za-z0-9_-]+)"/g), (match) =>
+    JSON.parse(Buffer.from(match[1]!, "base64url").toString("utf8")),
+  );
 }
 
 function compiledPage(request: MarimoPageRequest): CompiledMarimoPage {

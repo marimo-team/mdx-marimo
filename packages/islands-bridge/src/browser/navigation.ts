@@ -7,16 +7,21 @@ type NavigationState = {
   replaceState: History["replaceState"];
 };
 
-let state: NavigationState | undefined;
+type NavigationDocumentState = {
+  lease?: NavigationState;
+};
 
-// The marimo islands runtime discovers one page of apps when it starts.
-// Full-document navigation gives the next MDX page a fresh runtime registry.
+const navigationStateSymbol = Symbol.for("@marimo-team/islands-bridge/navigation-state");
+
+// Keep document navigation active until the loaded runtime confirms that it
+// can replace the current page app and release its session during route changes.
 export function retainDocumentNavigation(): () => void {
   if (typeof document === "undefined" || typeof history === "undefined") return () => {};
 
-  if (state) {
-    state.references += 1;
-    return releaseOnce();
+  const documentState = navigationDocumentState();
+  if (documentState.lease) {
+    documentState.lease.references += 1;
+    return releaseOnce(documentState.lease);
   }
 
   const originalPushState = history.pushState.bind(history);
@@ -45,7 +50,7 @@ export function retainDocumentNavigation(): () => void {
     return originalReplaceState(...args);
   };
 
-  state = {
+  const lease = {
     click,
     originalPushState,
     originalReplaceState,
@@ -53,27 +58,36 @@ export function retainDocumentNavigation(): () => void {
     references: 1,
     replaceState,
   };
+  documentState.lease = lease;
   history.pushState = pushState;
   history.replaceState = replaceState;
   document.addEventListener("click", click, true);
 
-  return releaseOnce();
+  return releaseOnce(lease);
 }
 
-function releaseOnce(): () => void {
+function navigationDocumentState(): NavigationDocumentState {
+  const target = window as typeof window & {
+    [key: symbol]: NavigationDocumentState | undefined;
+  };
+  return (target[navigationStateSymbol] ??= {});
+}
+
+function releaseOnce(lease: NavigationState): () => void {
   let released = false;
   return () => {
-    if (released || !state) return;
+    const documentState = navigationDocumentState();
+    if (released || documentState.lease !== lease) return;
     released = true;
-    state.references -= 1;
-    if (state.references > 0) return;
+    lease.references -= 1;
+    if (lease.references > 0) return;
 
-    document.removeEventListener("click", state.click, true);
-    if (history.pushState === state.pushState) history.pushState = state.originalPushState;
-    if (history.replaceState === state.replaceState) {
-      history.replaceState = state.originalReplaceState;
+    document.removeEventListener("click", lease.click, true);
+    if (history.pushState === lease.pushState) history.pushState = lease.originalPushState;
+    if (history.replaceState === lease.replaceState) {
+      history.replaceState = lease.originalReplaceState;
     }
-    state = undefined;
+    delete documentState.lease;
   };
 }
 

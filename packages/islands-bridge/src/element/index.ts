@@ -1,10 +1,25 @@
 import { mountMarimoIsland, renderMarimoIslandError } from "../browser/island";
-import { isMarimoPageCellPayload, type MarimoPageCellPayload } from "../protocol";
+import {
+  isMarimoPageCellPayload,
+  isMarimoPageCellReferencePayload,
+  type MarimoPageCellPayload,
+  type MarimoPageCellReferencePayload,
+  type MarimoPageRuntime,
+  type MarimoPageSerializedCellPayload,
+} from "../protocol";
 
 export type DefineMarimoIslandElementOptions = {
   name: string;
   host?: string;
 };
+
+type RegisteredPageApp = {
+  app: MarimoPageRuntime;
+  owners: Set<object>;
+};
+
+const pageApps = new Map<string, RegisteredPageApp>();
+const pageAppWaiters = new Map<string, Set<() => void>>();
 
 export function defineMarimoIslandElement({
   name,
@@ -37,9 +52,12 @@ function createMarimoIslandElementConstructor(
     }
 
     #cleanup: (() => void) | undefined;
+    #appRegistration: { app: MarimoPageRuntime; release: () => void } | undefined;
+    #cleanupAppWait: (() => void) | undefined;
     #mountQueued = false;
     #payload: MarimoPageCellPayload | undefined;
     #payloadObserver: MutationObserver | undefined;
+    #serializedPayload: MarimoPageSerializedCellPayload | undefined;
 
     connectedCallback(): void {
       this.#queueMount();
@@ -48,7 +66,12 @@ function createMarimoIslandElementConstructor(
     disconnectedCallback(): void {
       this.#cleanup?.();
       this.#cleanup = undefined;
+      this.#stopAppRegistration();
+      this.#stopAppWait();
       this.#stopPayloadWait();
+      if (this.#serializedPayload && isMarimoPageCellReferencePayload(this.#serializedPayload)) {
+        this.#payload = undefined;
+      }
     }
 
     attributeChangedCallback(
@@ -57,7 +80,7 @@ function createMarimoIslandElementConstructor(
       newValue: string | null,
     ): void {
       if (oldValue === newValue) return;
-      if (this.isConnected && this.#payload) this.#queueMount();
+      if (this.isConnected && (this.#payload || this.#serializedPayload)) this.#queueMount();
     }
 
     #queueMount(): void {
@@ -71,11 +94,28 @@ function createMarimoIslandElementConstructor(
 
     #mount(): void {
       try {
-        this.#payload = this.#payload ?? readPayload(this);
-        if (!this.#payload) {
+        this.#serializedPayload = this.#serializedPayload ?? readPayload(this);
+        if (!this.#serializedPayload) {
           this.#waitForPayload();
           return;
         }
+
+        this.#registerSerializedApp();
+        this.#payload = this.#payload ?? resolvePayload(this.#serializedPayload);
+        if (!this.#payload) {
+          const reference = this.#serializedPayload;
+          if (!isMarimoPageCellReferencePayload(reference)) {
+            throw new Error("Invalid marimo page cell reference");
+          }
+          this.#cleanup ??= mountMarimoIsland(this, staticPayload(reference), {
+            ...(hostKind ? { host: hostKind } : {}),
+            theme: themeFromElement(this),
+          });
+          this.#waitForApp(reference.appId);
+          return;
+        }
+
+        this.#stopAppWait();
         this.#stopPayloadWait();
         this.#cleanup?.();
         this.#cleanup = mountMarimoIsland(this, this.#payload, {
@@ -85,6 +125,7 @@ function createMarimoIslandElementConstructor(
       } catch (error: unknown) {
         this.#cleanup?.();
         this.#cleanup = undefined;
+        this.#stopAppWait();
         this.#stopPayloadWait();
         this.classList.add("marimo-island-host");
         if (hostKind) this.dataset.marimoHost = hostKind;
@@ -101,6 +142,36 @@ function createMarimoIslandElementConstructor(
       this.#payloadObserver.observe(this, { childList: true, subtree: true });
     }
 
+    #waitForApp(appId: string): void {
+      if (this.#cleanupAppWait) return;
+      this.#cleanupAppWait = waitForPageApp(appId, () => {
+        this.#cleanupAppWait = undefined;
+        this.#queueMount();
+      });
+    }
+
+    #registerSerializedApp(): void {
+      const serialized = this.#serializedPayload;
+      if (!serialized || !isMarimoPageCellPayload(serialized) || !serialized.app) return;
+      if (this.#appRegistration?.app === serialized.app) return;
+
+      this.#stopAppRegistration();
+      this.#appRegistration = {
+        app: serialized.app,
+        release: registerPageApp(serialized.app, this),
+      };
+    }
+
+    #stopAppRegistration(): void {
+      this.#appRegistration?.release();
+      this.#appRegistration = undefined;
+    }
+
+    #stopAppWait(): void {
+      this.#cleanupAppWait?.();
+      this.#cleanupAppWait = undefined;
+    }
+
     #stopPayloadWait(): void {
       this.#payloadObserver?.disconnect();
       this.#payloadObserver = undefined;
@@ -108,12 +179,66 @@ function createMarimoIslandElementConstructor(
   };
 }
 
-function readPayload(host: HTMLElement): MarimoPageCellPayload | undefined {
+function readPayload(host: HTMLElement): MarimoPageSerializedCellPayload | undefined {
   const source = readPayloadSource(host);
   if (!source) return undefined;
   const payload: unknown = JSON.parse(source);
-  if (isMarimoPageCellPayload(payload)) return payload;
+  if (isMarimoPageCellPayload(payload) || isMarimoPageCellReferencePayload(payload)) return payload;
   throw new Error("Invalid marimo page cell payload");
+}
+
+function resolvePayload(
+  payload: MarimoPageSerializedCellPayload,
+): MarimoPageCellPayload | undefined {
+  if (isMarimoPageCellPayload(payload)) {
+    return payload;
+  }
+
+  const registration = pageApps.get(payload.appId);
+  if (!registration) return undefined;
+  return {
+    protocolVersion: payload.protocolVersion,
+    app: registration.app,
+    cell: payload.cell,
+  };
+}
+
+function staticPayload(payload: MarimoPageCellReferencePayload): MarimoPageCellPayload {
+  return {
+    protocolVersion: payload.protocolVersion,
+    app: null,
+    cell: payload.cell,
+  };
+}
+
+function registerPageApp(app: MarimoPageRuntime, owner: object): () => void {
+  let registration = pageApps.get(app.id);
+  if (!registration || registration.app !== app) {
+    registration = { app, owners: new Set() };
+    pageApps.set(app.id, registration);
+  }
+  registration.owners.add(owner);
+  const waiters = pageAppWaiters.get(app.id);
+  if (waiters) {
+    pageAppWaiters.delete(app.id);
+    for (const waiter of waiters) waiter();
+  }
+
+  return () => {
+    if (pageApps.get(app.id) !== registration) return;
+    registration.owners.delete(owner);
+    if (registration.owners.size === 0) pageApps.delete(app.id);
+  };
+}
+
+function waitForPageApp(appId: string, mount: () => void): () => void {
+  const waiters = pageAppWaiters.get(appId) ?? new Set<() => void>();
+  waiters.add(mount);
+  pageAppWaiters.set(appId, waiters);
+  return () => {
+    waiters.delete(mount);
+    if (waiters.size === 0) pageAppWaiters.delete(appId);
+  };
 }
 
 function readPayloadSource(host: HTMLElement): string | undefined {

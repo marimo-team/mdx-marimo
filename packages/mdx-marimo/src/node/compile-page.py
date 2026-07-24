@@ -27,7 +27,7 @@ from marimo._schemas.serialization import (
     UnparsableCell,
 )
 
-PAGE_PROTOCOL_VERSION = 1
+PAGE_PROTOCOL_VERSION = 2
 DEFAULT_CELL_OPTIONS: dict[str, Any] = {
     "language": "python",
     "render": {

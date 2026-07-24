@@ -1,5 +1,5 @@
 import type { MarimoPageCellPayload } from "../protocol";
-import { ensureAssets } from "./assets";
+import { ensureAssets, hasConfirmedSoftNavigationAssets } from "./assets";
 import { retainDocumentNavigation } from "./navigation";
 import { applyMarimoTheme, installMarimoThemeBridge, type MarimoThemeMode } from "./theme";
 
@@ -13,10 +13,10 @@ export function mountMarimoIsland(
   payload: MarimoPageCellPayload,
   options: MountMarimoIslandOptions = {},
 ): () => void {
-  const releaseNavigation = retainDocumentNavigation();
-
   const theme = options.theme ?? "auto";
   let active = true;
+  let releaseAssets: (() => void) | undefined;
+  let releaseNavigation: (() => void) | undefined;
 
   host.classList.add("marimo-island-host");
   if (options.host) host.dataset.marimoHost = options.host;
@@ -25,12 +25,27 @@ export function mountMarimoIsland(
   host.dataset.marimoCellIndex = String(payload.cell.index);
   host.innerHTML = payload.cell.html;
 
+  if (!payload.app || !hasConfirmedSoftNavigationAssets(payload.app)) {
+    releaseNavigation = retainDocumentNavigation();
+  }
+
   const cleanupTheme = installMarimoThemeBridge(host, { theme });
 
   if (payload.app) {
     ensureAssets(payload.app)
-      .then(() => {
-        if (active) applyMarimoTheme(host, theme);
+      .then((lease) => {
+        if (!active) {
+          lease.release();
+          return;
+        }
+        releaseAssets = lease.release;
+        if (lease.supportsSoftNavigation) {
+          releaseNavigation?.();
+          releaseNavigation = undefined;
+        } else {
+          releaseNavigation ??= retainDocumentNavigation();
+        }
+        applyMarimoTheme(host, theme);
       })
       .catch((error: unknown) => {
         if (active) renderMarimoIslandError(host, error);
@@ -41,8 +56,9 @@ export function mountMarimoIsland(
 
   return () => {
     active = false;
+    releaseAssets?.();
     cleanupTheme();
-    releaseNavigation();
+    releaseNavigation?.();
     host.replaceChildren();
   };
 }
