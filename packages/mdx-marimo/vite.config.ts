@@ -39,6 +39,10 @@ export default defineConfig({
         replacement: source("./src/remark/index.ts"),
       },
       {
+        find: "@marimo-team/mdx-marimo/vitepress",
+        replacement: source("./src/adapters/vitepress/index.ts"),
+      },
+      {
         find: /^@marimo-team\/islands-bridge$/,
         replacement: source("../islands-bridge/src/index.ts"),
       },
@@ -51,6 +55,7 @@ export default defineConfig({
       entry: {
         index: "src/index.ts",
         "adapters/react/index": "src/adapters/react/index.ts",
+        "adapters/vitepress/index": "src/adapters/vitepress/index.ts",
         "element/index": "src/element/index.ts",
         "node/index": "src/node/index.ts",
         "remark/index": "src/remark/index.ts",
