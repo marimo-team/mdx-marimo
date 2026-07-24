@@ -1,0 +1,19 @@
+{
+  "name": "@marimo-team/mdx-marimo-example-vitepress",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vitepress build",
+    "dev": "vitepress dev --host 127.0.0.1 --port 4107",
+    "predev": "vp run -t @marimo-team/mdx-marimo#build",
+    "preview": "vitepress preview --host 127.0.0.1 --port 4107"
+  },
+  "dependencies": {
+    "@marimo-team/mdx-marimo": "workspace:*",
+    "vitepress": "1.6.4"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}
