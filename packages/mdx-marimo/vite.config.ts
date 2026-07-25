@@ -3,20 +3,46 @@ import { defineConfig } from "vite-plus";
 
 const source = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
+const bridgeEntries = {
+  "bridge/index": "../islands-bridge/src/index.ts",
+  "bridge/browser/index": "../islands-bridge/src/browser/index.ts",
+  "bridge/element/index": "../islands-bridge/src/element/index.ts",
+  "bridge/protocol/index": "../islands-bridge/src/protocol/index.ts",
+};
+
+// Deno follows .js specifiers inside declaration files without substituting a
+// neighboring .d.ts file. Emit each public entry as one self-contained type graph.
+const bridgeTypeBuilds = Object.entries(bridgeEntries).map(([entry, path]) => ({
+  name: `mdx-marimo-${entry.replaceAll("/", "-")}-types`,
+  entry: { [entry]: path },
+  clean: false,
+  dts: {
+    emitDtsOnly: true,
+    sourcemap: true,
+  },
+  format: ["esm" as const],
+  platform: "neutral" as const,
+  target: "es2022",
+}));
+
 export default defineConfig({
   resolve: {
     alias: [
       {
-        find: "@marimo-team/islands-bridge/browser",
-        replacement: source("../islands-bridge/src/browser/index.ts"),
+        find: "@marimo-team/mdx-marimo/bridge/browser",
+        replacement: source("./src/bridge/browser.ts"),
       },
       {
-        find: "@marimo-team/islands-bridge/element",
-        replacement: source("../islands-bridge/src/element/index.ts"),
+        find: "@marimo-team/mdx-marimo/bridge/element",
+        replacement: source("./src/bridge/element.ts"),
       },
       {
-        find: "@marimo-team/islands-bridge/protocol",
-        replacement: source("../islands-bridge/src/protocol/index.ts"),
+        find: "@marimo-team/mdx-marimo/bridge/protocol",
+        replacement: source("./src/bridge/protocol.ts"),
+      },
+      {
+        find: /^@marimo-team\/mdx-marimo\/bridge$/,
+        replacement: source("./src/bridge/index.ts"),
       },
       {
         find: "@marimo-team/mdx-marimo/element/auto",
@@ -60,16 +86,9 @@ export default defineConfig({
         "node/index": "src/node/index.ts",
         "remark/index": "src/remark/index.ts",
       },
-      copy: [
-        { from: "src/node/compile-page.py", to: "dist/node" },
-        { from: "src/styles.css", to: "dist" },
-      ],
+      copy: [{ from: "src/node/compile-page.py", to: "dist/node" }],
       deps: {
-        neverBundle: [
-          /^node:/,
-          /^@marimo-team\/islands-bridge(?:\/.*)?$/,
-          /^@marimo-team\/mdx-marimo\/.+$/,
-        ],
+        neverBundle: [/^node:/, /^@marimo-team\/mdx-marimo\/.+$/],
       },
       dts: {
         sourcemap: true,
@@ -82,18 +101,47 @@ export default defineConfig({
       sourcemap: true,
       target: "es2022",
       attw: {
-        excludeEntrypoints: ["./styles.css"],
+        excludeEntrypoints: ["./bridge/styles.css", "./styles.css"],
         level: "error",
         profile: "esm-only",
       },
     },
+    {
+      name: "mdx-marimo-bridge",
+      entry: bridgeEntries,
+      clean: false,
+      dts: false,
+      format: ["esm"],
+      platform: "neutral",
+      sourcemap: true,
+      target: "es2022",
+    },
+    {
+      name: "mdx-marimo-bridge-styles",
+      entry: ["../islands-bridge/src/styles.css"],
+      clean: false,
+      css: {
+        fileName: "bridge/styles.css",
+      },
+      dts: false,
+    },
+    {
+      name: "mdx-marimo-styles",
+      entry: ["../islands-bridge/src/styles.css"],
+      clean: false,
+      css: {
+        fileName: "styles.css",
+      },
+      dts: false,
+    },
+    ...bridgeTypeBuilds,
     {
       name: "mdx-marimo-element-auto",
       entry: {
         "element/auto": "src/element/auto.ts",
       },
       deps: {
-        alwaysBundle: [/^@marimo-team\/islands-bridge(?:\/.*)?$/],
+        alwaysBundle: [/^@marimo-team\/mdx-marimo\/bridge(?:\/.*)?$/],
       },
       dts: {
         sourcemap: false,

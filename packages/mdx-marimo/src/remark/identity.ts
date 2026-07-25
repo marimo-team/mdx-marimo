@@ -3,7 +3,7 @@ import {
   MARIMO_PAGE_PROTOCOL_VERSION,
   type MarimoCellRequest,
   type MarimoPageRequest,
-} from "@marimo-team/islands-bridge/protocol";
+} from "@marimo-team/mdx-marimo/bridge/protocol";
 
 export type MarimoPageIdentity =
   | string

@@ -2,7 +2,7 @@ import type { Root } from "mdast";
 import { visit } from "unist-util-visit";
 import { fenceLanguage, isMarimoConfigFence, isMarimoFence } from "../authoring/fences";
 import { parseFenceOptions } from "../authoring/options";
-import type { MarimoCellRequest, MarimoDiagnostic } from "@marimo-team/islands-bridge/protocol";
+import type { MarimoCellRequest, MarimoDiagnostic } from "@marimo-team/mdx-marimo/bridge/protocol";
 import type { MessageFile, ParentNode, TreeEdit } from "./edits";
 import { reportDiagnostic, withOptionalLine } from "./edits";
 

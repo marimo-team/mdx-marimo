@@ -13,7 +13,7 @@
     "lint": "vp lint --deny-warnings",
     "pack:mdx": "pnpm --filter @marimo-team/mdx-marimo pack",
     "release:check": "node scripts/check-release.mjs",
-    "release:version": "pnpm --recursive --filter @marimo-team/mdx-marimo --filter @marimo-team/islands-bridge version",
+    "release:version": "pnpm --filter @marimo-team/mdx-marimo version",
     "ready": "pnpm check && pnpm test && pnpm build",
     "test": "vp run -r test",
     "typecheck": "vp run -r typecheck"

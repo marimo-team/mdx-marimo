@@ -1,7 +1,7 @@
 import { Parser } from "acorn";
 import type { Program } from "estree";
 import type { RootContent } from "mdast";
-import type { MarimoPageCellPayload } from "@marimo-team/islands-bridge/protocol";
+import type { MarimoPageCellPayload } from "@marimo-team/mdx-marimo/bridge/protocol";
 import { defaultMarimoElementName } from "../element/name";
 
 export function sideEffectImportNode(importSource: string): RootContent {

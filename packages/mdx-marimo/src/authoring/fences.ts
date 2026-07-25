@@ -1,4 +1,4 @@
-import type { MarimoLanguage } from "@marimo-team/islands-bridge/protocol";
+import type { MarimoLanguage } from "@marimo-team/mdx-marimo/bridge/protocol";
 
 export function isMarimoFence(
   lang: string | null | undefined,

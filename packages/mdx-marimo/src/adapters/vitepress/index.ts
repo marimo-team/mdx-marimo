@@ -5,11 +5,11 @@ import type {
   MarimoDiagnostic,
   MarimoPageCompiler,
   MarimoPageRequest,
-} from "@marimo-team/islands-bridge/protocol";
+} from "@marimo-team/mdx-marimo/bridge/protocol";
 import {
   MARIMO_PAGE_PROTOCOL_VERSION,
   pageCellPayload,
-} from "@marimo-team/islands-bridge/protocol";
+} from "@marimo-team/mdx-marimo/bridge/protocol";
 import MarkdownIt from "markdown-it";
 import { Buffer } from "node:buffer";
 import { fenceLanguage, isMarimoConfigFence, isMarimoFence } from "../../authoring/fences";

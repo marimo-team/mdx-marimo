@@ -4,7 +4,7 @@ import {
   type CompiledMarimoCell,
   type CompiledMarimoPage,
   type MarimoDiagnostic,
-} from "@marimo-team/islands-bridge/protocol";
+} from "@marimo-team/mdx-marimo/bridge/protocol";
 import { marimoIslandNode } from "../mdx/nodes";
 
 export type ParentNode = {

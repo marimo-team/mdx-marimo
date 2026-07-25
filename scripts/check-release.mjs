@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const packageJson = readJson(join(root, "packages/mdx-marimo/package.json"));
-const bridgePackageJson = readJson(join(root, "packages/islands-bridge/package.json"));
 const docsPackageJson = readJson(join(root, "apps/docs/package.json"));
 const packageName = packageJson.name;
 const version = packageJson.version;
@@ -14,12 +13,6 @@ const packDir = join(root, "dist/npm");
 let consumerDir;
 
 try {
-  if (version !== bridgePackageJson.version) {
-    fail(
-      `${packageName}@${version} must match ${bridgePackageJson.name}@${bridgePackageJson.version}`,
-    );
-  }
-
   consumerDir = mkdtempSync(join(tmpdir(), "mdx-marimo-release-"));
   console.log(`Checking ${packageName}@${version}`);
   run("pnpm", ["ready"], root);
@@ -57,6 +50,10 @@ try {
         `${packageName}/node`,
         `${packageName}/react`,
         `${packageName}/vitepress`,
+        `${packageName}/bridge`,
+        `${packageName}/bridge/browser`,
+        `${packageName}/bridge/element`,
+        `${packageName}/bridge/protocol`,
       ])};`,
       "for (const subpath of subpaths) await import(subpath);",
       "console.log(`Imported ${subpaths.length} public JavaScript subpaths`);",

@@ -5,7 +5,7 @@ import {
   isCompiledMarimoPage,
   type CompiledMarimoPage,
   type MarimoPageRequest,
-} from "@marimo-team/islands-bridge/protocol";
+} from "@marimo-team/mdx-marimo/bridge/protocol";
 import { readCachedResult, writeCachedResult } from "./cache";
 import { compilerArgs, resolveUvCommand, type UvOptions } from "./uv";
 

@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, type CSSProperties } from "react";
-import { mountMarimoIsland } from "@marimo-team/islands-bridge/browser";
-import type { MarimoPageCellPayload } from "@marimo-team/islands-bridge/protocol";
+import { mountMarimoIsland } from "@marimo-team/mdx-marimo/bridge/browser";
+import type { MarimoPageCellPayload } from "@marimo-team/mdx-marimo/bridge/protocol";
 
 export type MarimoIslandTheme = "auto" | "light" | "dark";
 
