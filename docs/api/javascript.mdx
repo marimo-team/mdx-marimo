@@ -153,5 +153,55 @@ unavailable.
 Import `@marimo-team/mdx-marimo/element/auto` from a browser entry to register
 the default element as a side effect.
 
+## Host adapter bridge
+
+Publishing adapters use the bridge subpaths to move one page payload from
+source compilation into a host-defined browser element:
+
+```ts
+import { mountMarimoIsland } from "@marimo-team/mdx-marimo/bridge/browser";
+import {
+  defineMarimoIslandElement,
+  mountMarimoIslandElement,
+} from "@marimo-team/mdx-marimo/bridge/element";
+import {
+  encodePageCellPayload,
+  projectPageCellPayloads,
+  type CompiledMarimoPage,
+  type MarimoPageRequest,
+} from "@marimo-team/mdx-marimo/bridge/protocol";
+```
+
+`bridge/protocol` owns the versioned request, compiled page, app, cell, and
+serialized element payloads. `bridge/browser` mounts initial HTML, leases
+shared assets, retains replaceable apps, and follows the host theme.
+`bridge/element` creates a custom element for a host name and accepts payloads
+through markup or its `payload` property.
+
+App replacement requires marimo 0.23.16 or newer. The bridge keeps
+full-document navigation when the runtime version cannot guarantee session
+message ownership.
+
+Each compiled cell exposes its build-time `output` as a MIME type, JSON data,
+and static HTML. Host adapters can project this record into native document
+nodes.
+
+`projectPageCellPayloads(page)` returns one entry for every compiled cell. The
+first included cell carries the app, later cells reference it, and excluded
+cells return `null`. The projected browser payload contains the cell index,
+rendered island HTML, effective options, and diagnostics.
+`encodePageCellPayload(payload)` produces the base64url value used by
+`data-marimo-payload`.
+
+`mountMarimoIslandElement(parent, payload, options)` supports render systems
+that replace host wrappers. Equivalent mounts adopt the connected custom
+element. `releaseDelayFrames` sets how long the element remains available for
+adoption after release.
+
+The mount host must belong to the current document for both browser entries.
+An iframe registers and mounts the bridge inside its own document.
+
+Import `@marimo-team/mdx-marimo/bridge/styles.css` once in the owning document.
+
 See [Authoring cells](authoring.md) for fence forms and cell options. See
 [Styling](styling.md) for the public CSS properties.
