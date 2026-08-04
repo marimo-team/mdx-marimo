@@ -4,7 +4,6 @@
     "types": ["node"],
     "paths": {
       "@marimo-team/mdx-marimo": ["./src/index.ts"],
-      "@marimo-team/mdx-marimo/bridge": ["./src/bridge/index.ts"],
       "@marimo-team/mdx-marimo/bridge/browser": ["./src/bridge/browser.ts"],
       "@marimo-team/mdx-marimo/bridge/element": ["./src/bridge/element.ts"],
       "@marimo-team/mdx-marimo/bridge/protocol": ["./src/bridge/protocol.ts"],

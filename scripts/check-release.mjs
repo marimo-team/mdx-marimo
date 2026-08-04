@@ -50,7 +50,6 @@ try {
         `${packageName}/node`,
         `${packageName}/react`,
         `${packageName}/vitepress`,
-        `${packageName}/bridge`,
         `${packageName}/bridge/browser`,
         `${packageName}/bridge/element`,
         `${packageName}/bridge/protocol`,

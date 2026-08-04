@@ -1,4 +1,4 @@
-export const MARIMO_PAGE_PROTOCOL_VERSION = 1 as const;
+export const MARIMO_PAGE_PROTOCOL_VERSION = 2 as const;
 
 export type MarimoPageProtocolVersion = typeof MARIMO_PAGE_PROTOCOL_VERSION;
 export type JsonPrimitive = string | number | boolean | null;
@@ -89,13 +89,19 @@ export type MarimoPageRuntime = {
   runtimeCellCount: number;
   assets: MarimoRuntimeAssets;
   notebookCode?: string;
-  runtimePayload?: JsonValue;
+};
+
+export type CompiledMarimoOutput = {
+  mimetype: string;
+  data: JsonValue;
+  html: string;
 };
 
 export type CompiledMarimoCell = {
   index: number;
   html: string;
   options: MarimoCellOptions;
+  output: CompiledMarimoOutput | null;
   diagnostics?: MarimoDiagnostic[];
 };
 
@@ -106,11 +112,25 @@ export type CompiledMarimoPage = {
   diagnostics: MarimoDiagnostic[];
 };
 
+export type MarimoPageCell = Omit<CompiledMarimoCell, "output">;
+
 export type MarimoPageCellPayload = {
   protocolVersion: MarimoPageProtocolVersion;
   app: MarimoPageRuntime | null;
-  cell: CompiledMarimoCell;
+  cell: MarimoPageCell;
 };
+
+export type MarimoPageCellReferencePayload = {
+  protocolVersion: MarimoPageProtocolVersion;
+  appId: string;
+  cell: MarimoPageCell;
+};
+
+export type MarimoPageSerializedCellPayload =
+  | MarimoPageCellPayload
+  | MarimoPageCellReferencePayload;
+
+export type ProjectedMarimoPageCellPayload = MarimoPageSerializedCellPayload | null;
 
 export type MarimoPageCompiler = (
   request: MarimoPageRequest,
@@ -123,14 +143,66 @@ export function pageCellPayload(
   return {
     protocolVersion: page.protocolVersion,
     app: page.app,
-    cell,
+    cell: pageCell(cell),
   };
+}
+
+export function pageCellReferencePayload(
+  page: Pick<CompiledMarimoPage, "protocolVersion" | "app">,
+  cell: CompiledMarimoCell,
+): MarimoPageSerializedCellPayload {
+  if (!page.app) return pageCellPayload(page, cell);
+  return {
+    protocolVersion: page.protocolVersion,
+    appId: page.app.id,
+    cell: pageCell(cell),
+  };
+}
+
+export function projectPageCellPayloads(
+  page: CompiledMarimoPage,
+): ProjectedMarimoPageCellPayload[] {
+  const indices = page.cells.map((cell) => cell.index);
+  if (indices.some((index, position) => index !== position)) {
+    const expected = page.cells.map((_, index) => index);
+    throw new Error(
+      `marimo compiler returned cell indices [${indices.join(", ")}]; expected [${expected.join(", ")}]`,
+    );
+  }
+  const carrierIndex = page.app
+    ? page.cells.find((cell) => cell.options.render.include)?.index
+    : undefined;
+  return page.cells.map((cell) => {
+    if (!cell.options.render.include) return null;
+    return cell.index === carrierIndex
+      ? pageCellPayload(page, cell)
+      : pageCellReferencePayload(page, cell);
+  });
+}
+
+export function encodePageCellPayload(payload: MarimoPageSerializedCellPayload): string {
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
 }
 
 export function isMarimoPageCellPayload(value: unknown): value is MarimoPageCellPayload {
   if (!isRecord(value) || value.protocolVersion !== MARIMO_PAGE_PROTOCOL_VERSION) return false;
-  if (!isCompiledCell(value.cell)) return false;
+  if (!isPageCell(value.cell)) return false;
   return value.app === null || isPageRuntime(value.app);
+}
+
+export function isMarimoPageCellReferencePayload(
+  value: unknown,
+): value is MarimoPageCellReferencePayload {
+  return (
+    isRecord(value) &&
+    value.protocolVersion === MARIMO_PAGE_PROTOCOL_VERSION &&
+    typeof value.appId === "string" &&
+    value.appId.length > 0 &&
+    isPageCell(value.cell)
+  );
 }
 
 export function isCompiledMarimoPage(value: unknown): value is CompiledMarimoPage {
@@ -144,6 +216,10 @@ export function isCompiledMarimoPage(value: unknown): value is CompiledMarimoPag
 }
 
 function isCompiledCell(value: unknown): value is CompiledMarimoCell {
+  return isPageCell(value) && "output" in value && isCompiledOutput(value.output);
+}
+
+function isPageCell(value: unknown): value is MarimoPageCell {
   return (
     isRecord(value) &&
     isFiniteNumber(value.index) &&
@@ -153,14 +229,34 @@ function isCompiledCell(value: unknown): value is CompiledMarimoCell {
   );
 }
 
+function isCompiledOutput(value: unknown): value is CompiledMarimoOutput | null {
+  return (
+    value === null ||
+    (isRecord(value) &&
+      typeof value.mimetype === "string" &&
+      isJsonValue(value.data) &&
+      typeof value.html === "string")
+  );
+}
+
+function pageCell(cell: CompiledMarimoCell): MarimoPageCell {
+  const projected: MarimoPageCell = {
+    index: cell.index,
+    html: cell.html,
+    options: cell.options,
+  };
+  if (cell.diagnostics !== undefined) projected.diagnostics = cell.diagnostics;
+  return projected;
+}
+
 function isPageRuntime(value: unknown): value is MarimoPageRuntime {
   return (
     isRecord(value) &&
     typeof value.id === "string" &&
+    value.id.length > 0 &&
     isFiniteNumber(value.runtimeCellCount) &&
     isRuntimeAssets(value.assets) &&
-    (value.notebookCode === undefined || typeof value.notebookCode === "string") &&
-    (value.runtimePayload === undefined || isJsonValue(value.runtimePayload))
+    (value.notebookCode === undefined || typeof value.notebookCode === "string")
   );
 }
 

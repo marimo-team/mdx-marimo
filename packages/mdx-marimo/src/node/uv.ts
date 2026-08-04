@@ -12,6 +12,11 @@ const defaultMarimoDependency = "marimo>=0.23.15";
 const defaultPythonVersion = "3.12";
 const nodeRequire = createRequire(import.meta.url);
 
+type PyprojectDocument = {
+  dependencies?: unknown;
+  "requires-python"?: unknown;
+};
+
 export function resolveUvCommand(options: UvOptions = {}): string {
   if (options.uvCommand) return options.uvCommand;
   if (process.env.MDX_MARIMO_UV) return process.env.MDX_MARIMO_UV;
@@ -23,11 +28,12 @@ export function resolveUvCommand(options: UvOptions = {}): string {
 }
 
 export function compilerArgs(pyproject: string | undefined, compilerPath: string): string[] {
+  const document = parsePyproject(pyproject);
   return [
     "run",
     "--python",
-    pythonRequest(pyproject),
-    ...dependencyArgs(pyproject),
+    pythonRequest(document),
+    ...dependencyArgs(document),
     "python",
     compilerPath,
   ];
@@ -45,16 +51,16 @@ function resolveNpmUvCommand(): string | undefined {
   }
 }
 
-function dependencyArgs(pyproject: string | undefined): string[] {
-  const dependencies = pyprojectDependencies(pyproject);
+function dependencyArgs(document: PyprojectDocument): string[] {
+  const dependencies = pyprojectDependencies(document);
   const resolvedDependencies = dependencies.some(isMarimoDependency)
     ? dependencies
     : [defaultMarimoDependency, ...dependencies];
   return resolvedDependencies.flatMap((dependency) => ["--with", dependency]);
 }
 
-function pythonRequest(pyproject: string | undefined): string {
-  const requirement = pyprojectRequiresPython(pyproject);
+function pythonRequest(document: PyprojectDocument): string {
+  const requirement = pyprojectRequiresPython(document);
   if (!requirement) return defaultPythonVersion;
 
   const parts = requirement
@@ -73,9 +79,7 @@ function pythonRequest(pyproject: string | undefined): string {
   return satisfiesUpperBounds(candidate, parts) ? candidate : requirement;
 }
 
-function pyprojectRequiresPython(pyproject: string | undefined): string | undefined {
-  if (!pyproject?.trim()) return undefined;
-  const document = parseToml(pyproject) as { "requires-python"?: unknown };
+function pyprojectRequiresPython(document: PyprojectDocument): string | undefined {
   const requirement = document["requires-python"];
   return typeof requirement === "string" && requirement.trim() ? requirement : undefined;
 }
@@ -115,12 +119,28 @@ function compareVersions(left: string, right: string): number {
   return 0;
 }
 
-function pyprojectDependencies(pyproject: string | undefined): string[] {
-  if (!pyproject?.trim()) return [];
-  const document = parseToml(pyproject) as { dependencies?: unknown };
+function pyprojectDependencies(document: PyprojectDocument): string[] {
   const dependencies = document.dependencies;
   if (!Array.isArray(dependencies)) return [];
   return dependencies.filter((dependency): dependency is string => typeof dependency === "string");
+}
+
+function parsePyproject(pyproject: string | undefined): PyprojectDocument {
+  if (!pyproject?.trim()) return {};
+  const source = pyproject.trim();
+  const lines = source.split(/\r?\n/);
+  const toml =
+    lines[0] === "# /// script" && lines.at(-1) === "# ///"
+      ? lines
+          .slice(1, -1)
+          .map((line) => {
+            if (!line.startsWith("#")) throw new Error("Invalid PEP 723 script metadata");
+            if (line.startsWith("# ")) return line.slice(2);
+            return line.slice(1);
+          })
+          .join("\n")
+      : source;
+  return parseToml(toml) as PyprojectDocument;
 }
 
 function isMarimoDependency(dependency: string): boolean {

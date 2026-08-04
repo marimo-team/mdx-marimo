@@ -1,8 +1,11 @@
 import { Parser } from "acorn";
 import type { Program } from "estree";
 import type { RootContent } from "mdast";
-import type { MarimoPageCellPayload } from "@marimo-team/mdx-marimo/bridge/protocol";
-import { defaultMarimoElementName } from "../element/name";
+import {
+  encodePageCellPayload,
+  type MarimoPageSerializedCellPayload,
+} from "@marimo-team/mdx-marimo/bridge/protocol";
+import { defaultMarimoElementName, mdxMarimoHost } from "../element/name";
 
 export function sideEffectImportNode(importSource: string): RootContent {
   const value = `import ${JSON.stringify(importSource)}`;
@@ -24,7 +27,7 @@ export function marimoIslandNode({
   theme = "auto",
 }: {
   elementName?: string;
-  payload: MarimoPageCellPayload;
+  payload: MarimoPageSerializedCellPayload;
   theme?: "auto" | "light" | "dark";
 }): RootContent {
   return {
@@ -39,7 +42,7 @@ export function marimoIslandNode({
       {
         type: "mdxJsxAttribute",
         name: "data-marimo-host",
-        value: "mdx",
+        value: mdxMarimoHost,
       },
       {
         type: "mdxJsxAttribute",
@@ -49,7 +52,7 @@ export function marimoIslandNode({
       {
         type: "mdxJsxAttribute",
         name: "data-marimo-app-id",
-        value: payload.app?.id ?? "",
+        value: "app" in payload ? (payload.app?.id ?? "") : payload.appId,
       },
       {
         type: "mdxJsxAttribute",
@@ -64,7 +67,7 @@ export function marimoIslandNode({
       {
         type: "mdxJsxAttribute",
         name: "data-marimo-payload",
-        value: encodePayload(payload),
+        value: encodePageCellPayload(payload),
       },
     ],
     children: [],
@@ -72,8 +75,4 @@ export function marimoIslandNode({
       _mdxExplicitJsx: true,
     },
   } as unknown as RootContent;
-}
-
-function encodePayload(payload: MarimoPageCellPayload): string {
-  return Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
 }

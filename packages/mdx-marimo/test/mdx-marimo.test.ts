@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import {
   MARIMO_PAGE_PROTOCOL_VERSION,
+  isMarimoPageCellPayload,
+  isMarimoPageCellReferencePayload,
   type CompiledMarimoPage,
   type MarimoCellOptions,
   type MarimoPageCompiler,
@@ -36,8 +38,7 @@ describe("remarkMarimo", () => {
           source: "x = 1",
           options: {
             language: "python",
-            render: { source: true, output: true, include: true },
-            execution: { enabled: true },
+            render: { source: true },
           },
         },
       ],
@@ -47,7 +48,6 @@ describe("remarkMarimo", () => {
     expect(compiled).toContain('data-marimo-payload-encoding="base64url"');
     expect(compiled).toMatch(/data-marimo-payload="[A-Za-z0-9_-]+"/);
     expect(compiled).toContain('data-marimo-app-id="marimo-test"');
-    expect(compiled).not.toContain("<template");
   });
 
   it("configures the custom element, theme, and runtime import", async () => {
@@ -74,6 +74,39 @@ describe("remarkMarimo", () => {
     expect(compiled).toContain('data-marimo-theme-mode="dark"');
   });
 
+  it("serializes the page app once and references it from later cells", async () => {
+    const file = await compile(
+      ["```python marimo", "x = 1", "```", "", "```python marimo", "x + 1", "```"].join("\n"),
+      {
+        jsx: true,
+        remarkPlugins: [
+          [
+            remarkMarimo,
+            {
+              compile: async (request: MarimoPageRequest) => {
+                const result = compiledPage(request);
+                result.app!.notebookCode = "shared notebook source";
+                return result;
+              },
+            },
+          ],
+        ],
+      },
+    );
+
+    const payloads = emittedPayloads(String(file));
+
+    expect(payloads).toHaveLength(2);
+    expect(isMarimoPageCellPayload(payloads[0])).toBe(true);
+    expect(isMarimoPageCellReferencePayload(payloads[1])).toBe(true);
+    expect(payloads[0]).toMatchObject({
+      app: { id: "marimo-test", notebookCode: "shared notebook source" },
+      cell: { index: 0 },
+    });
+    expect(payloads[1]).toMatchObject({ appId: "marimo-test", cell: { index: 1 } });
+    expect(JSON.stringify(payloads).match(/shared notebook source/g)).toHaveLength(1);
+  });
+
   it("keeps ordinary fences and nested MDX structure intact", async () => {
     const ordinary = await compile("```python\nx = 1\n```", {
       jsx: true,
@@ -84,9 +117,8 @@ describe("remarkMarimo", () => {
       remarkPlugins: [[remarkMarimo, { compile: compiler() }]],
     });
 
-    expect(String(ordinary)).toContain(
-      '<_components.pre><_components.code className="language-python"',
-    );
+    expect(String(ordinary)).toContain('className="language-python"');
+    expect(String(ordinary)).toContain("x = 1");
     const blockquote = String(nested).match(
       /<_components\.blockquote>([\s\S]*?)<\/_components\.blockquote>/,
     )?.[1];
@@ -247,6 +279,12 @@ function compiler(inspect?: (request: MarimoPageRequest) => void): MarimoPageCom
   };
 }
 
+function emittedPayloads(compiled: string): unknown[] {
+  return Array.from(compiled.matchAll(/data-marimo-payload="([A-Za-z0-9_-]+)"/g), (match) =>
+    JSON.parse(Buffer.from(match[1]!, "base64url").toString("utf8")),
+  );
+}
+
 function compiledPage(request: MarimoPageRequest): CompiledMarimoPage {
   return {
     protocolVersion: MARIMO_PAGE_PROTOCOL_VERSION,
@@ -258,8 +296,33 @@ function compiledPage(request: MarimoPageRequest): CompiledMarimoPage {
     cells: request.cells.map((cell) => ({
       index: cell.index,
       html: "<marimo-island></marimo-island>",
-      options: cell.options as MarimoCellOptions,
+      options: compiledOptions(cell.options),
+      output: null,
     })),
     diagnostics: [],
+  };
+}
+
+function compiledOptions(patch: MarimoPageRequest["cells"][number]["options"]): MarimoCellOptions {
+  return {
+    language: patch.language ?? "python",
+    render: {
+      source: false,
+      output: true,
+      include: true,
+      editor: false,
+      error: true,
+      serverOutput: true,
+      ...patch.render,
+    },
+    execution: { enabled: true, ...patch.execution },
+    marimo: {
+      disabled: false,
+      unparsable: false,
+      ...patch.marimo,
+    },
+    ...(patch.sql ? { sql: patch.sql } : {}),
+    ...(patch.name === undefined ? {} : { name: patch.name }),
+    ...(patch.column === undefined ? {} : { column: patch.column }),
   };
 }

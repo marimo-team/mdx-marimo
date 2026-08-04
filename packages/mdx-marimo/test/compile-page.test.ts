@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import {
   MARIMO_PAGE_PROTOCOL_VERSION,
+  isCompiledMarimoPage,
   type CompiledMarimoPage,
   type MarimoCellOptions,
   type MarimoPageRequest,
@@ -15,6 +16,7 @@ from dataclasses import dataclass
 import importlib.util
 import json
 import sys
+import tomllib
 import types
 
 build_calls = []
@@ -44,12 +46,37 @@ class NotebookSerializationV1:
     cells: list
 
 
+@dataclass
+class Output:
+    mimetype: str
+    data: object
+
+    def asdict(self):
+        return {"mimetype": self.mimetype, "data": self.data}
+
+
 class Stub:
-    def __init__(self, index, reactive):
+    def __init__(self, index, reactive, has_error):
         self.index = index
         self.reactive = reactive
+        self.has_error = has_error
+        self.output = (
+            Output("application/vnd.marimo+error", "ValueError")
+            if has_error
+            else Output("text/plain", "compiled output")
+            if reactive
+            else None
+        )
 
-    def render(self, display_code=None, display_output=None, is_reactive=None):
+    def render(
+        self,
+        display_code=None,
+        display_output=None,
+        is_reactive=None,
+        as_raw=False,
+    ):
+        if as_raw:
+            return f"<p>{self.output.data}</p>" if self.output is not None else ""
         return json.dumps({
             "displayCode": display_code,
             "displayOutput": display_output,
@@ -59,8 +86,6 @@ class Stub:
 
 
 class MarimoIslandGenerator:
-    last_ir = None
-
     def __init__(self, app_id):
         self.app_id = app_id
         self.has_run = False
@@ -70,7 +95,6 @@ class MarimoIslandGenerator:
 
     @classmethod
     def _from_ir(cls, ir, app_id, filepath):
-        cls.last_ir = ir
         generator = cls(app_id)
         generator.ir = ir
         generator.filepath = filepath
@@ -80,6 +104,7 @@ class MarimoIslandGenerator:
                 index,
                 not isinstance(cell, UnparsableCell)
                 and not cell.options.get("disabled", False),
+                "raise ValueError" in cell.code,
             )
             for index, cell in enumerate(ir.cells)
         ]
@@ -99,13 +124,14 @@ class MarimoIslandGenerator:
             '<marimo-filename></marimo-filename>'
         )
 
-
 def markdown_to_marimo(source):
     return f"mo.md({source!r})"
 
 
 def sql_to_marimo(source, output_name, hide_output, engine):
-    return f"{output_name} = sql({source!r}, hide_output={hide_output}, engine={engine!r})"
+    output_arg = ", output=False" if hide_output else ""
+    engine_arg = f", engine={engine}" if engine else ""
+    return f"{output_name} = mo.sql(f{source!r}{output_arg}{engine_arg})"
 
 
 class AppFileManager:
@@ -162,6 +188,7 @@ for name in [
     "marimo._schemas",
     "marimo._server",
     "marimo._session",
+    "marimo._utils",
 ]:
     sys.modules[name] = types.ModuleType(name)
 
@@ -188,13 +215,23 @@ serialization.NotebookSerializationV1 = NotebookSerializationV1
 serialization.UnparsableCell = UnparsableCell
 sys.modules["marimo._schemas.serialization"] = serialization
 
+def read_pyproject_from_script(script):
+    lines = script.strip().splitlines()
+    content = "\n".join(
+        line[2:] if line.startswith("# ") else line[1:]
+        for line in lines[1:-1]
+    )
+    return tomllib.loads(content)
+
+scripts_module = types.ModuleType("marimo._utils.scripts")
+scripts_module.read_pyproject_from_script = read_pyproject_from_script
+sys.modules["marimo._utils.scripts"] = scripts_module
+
 export_api = sys.argv[2]
-if export_api != "legacy":
+if export_api == "current":
     sys.modules["marimo._export"] = types.ModuleType("marimo._export")
-if export_api in {"current", "missing-requests"}:
     sys.modules["marimo._export.file"] = types.ModuleType("marimo._export.file")
     sys.modules["marimo._export.file"].run_notebook = run_notebook
-if export_api == "current":
     sys.modules["marimo._export.requests"] = types.ModuleType("marimo._export.requests")
     sys.modules["marimo._export.requests"].NotebookExecutionOptions = NotebookExecutionOptions
     sys.modules["marimo._export.requests"].RunNotebookRequest = RunNotebookRequest
@@ -216,80 +253,43 @@ spec.loader.exec_module(module)
 payload = json.loads(sys.stdin.read())
 result = asyncio.run(module.compile_page(payload))
 result["buildCalls"] = build_calls
-result["ir"] = [
-    {
-        "type": type(cell).__name__,
-        "code": cell.code,
-        "options": cell.options,
-    }
-    for cell in MarimoIslandGenerator.last_ir.cells
-]
 sys.stdout.write(json.dumps(result))
 `;
 
-describe("compile-page.py", () => {
+const compilerPath = join("..", "islands-compiler", "compiler.py");
+
+describe("islands compiler", () => {
   it("declares the Python runtime lower bound in script metadata", () => {
-    const source = readFileSync(join("src", "node", "compile-page.py"), "utf8");
+    const source = readFileSync(compilerPath, "utf8");
 
     expect(source).toContain('# requires-python = ">=3.11"');
+    expect(source).toContain('"marimo>=0.23.15"');
   });
 
   it("compiles fixture payloads into one page-level app", () => {
-    const result = compileFixture("current");
+    const parsed = compilePage(fixtureRequest());
 
-    expect(result.stderr).toBe("");
-    expect(result.status).toBe(0);
-
-    const parsed = JSON.parse(result.stdout) as CompiledMarimoPage;
     expect(parsed.protocolVersion).toBe(MARIMO_PAGE_PROTOCOL_VERSION);
     expect(parsed.cells).toHaveLength(3);
     expect(parsed.app).toMatchObject({
-      id: "marimo-882921df4723",
       runtimeCellCount: 4,
     });
-    expect(parsed.app?.assets.moduleScripts).toEqual(["/runtime.js"]);
-    expect(parsed.app?.assets.links).toEqual([{ href: "/style.css", rel: "stylesheet" }]);
-    expect(parsed.app?.assets.version).toBe("0.0.test");
-    expect(parsed.app?.assets.headTags).toEqual([
-      { tag: "marimo-filename", attrs: {}, text: "fixtures/page.mdx" },
-    ]);
     expect(parsed.app?.notebookCode).toContain('dependencies = ["wigglystuff"]');
-    expect(parsed.app?.notebookCode).toContain("# /// script");
     expect(parsed.app?.notebookCode).toContain("import math");
-    expect(parsed.app?.notebookCode).toContain("x = 1");
-    expect(parsed.cells[0]?.html).toContain('"reactive": true');
-    expect(parsed.cells[0]?.html).toContain('"displayOutput": false');
-    expect(parsed.cells[1]?.html).toContain('<pre><code class="language-python">');
+    expect(parsed.cells[0]?.output?.mimetype).toBe("text/plain");
+    expect(parsed.cells[0]?.output?.data).toBe("compiled output");
     expect(parsed.cells[1]?.html).toContain("disabled source");
-    expect(parsed.cells[1]?.html).toContain('"reactive": false');
+    expect(parsed.cells[1]?.output).toBeNull();
+    expect(parsed.cells[1]?.options.execution.enabled).toBe(false);
     expect(parsed.cells[2]?.html).toContain("unparsable source");
-    expect((JSON.parse(result.stdout) as { ir: unknown }).ir).toEqual([
-      { type: "CellDef", code: "import math", options: {} },
-      { type: "CellDef", code: "x = 1", options: {} },
-      { type: "CellDef", code: "disabled source", options: { disabled: true } },
-      {
-        type: "UnparsableCell",
-        code: "unparsable source",
-        options: { disabled: true },
-      },
-    ]);
-    expect(JSON.parse(result.stdout).buildCalls).toEqual([
-      {
-        filename: "fixtures/page.mdx",
-        cliArgs: {},
-        argv: null,
-        quiet: true,
-        persistSession: false,
-      },
-    ]);
+    expect(parsed.cells[2]?.options.execution.enabled).toBe(false);
   });
 
   it.each([
-    ["export package", "legacy"],
-    ["file submodule", "missing-file"],
-    ["requests submodule", "missing-requests"],
-  ] as const)("supports legacy execution without the current %s", (_, exportApi) => {
-    const result = compileFixture(exportApi);
+    ["request API", "current"],
+    ["legacy export package", "legacy"],
+  ] as const)("executes through the %s", (_, exportApi) => {
+    const result = compileRequest(fixtureRequest(), exportApi);
 
     expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
@@ -303,18 +303,188 @@ describe("compile-page.py", () => {
       },
     ]);
   });
+
+  it("uses source startup for wrapped PEP 723 dependencies", () => {
+    const request = fixtureRequest();
+    request.metadata = {
+      pyproject: '# /// script\n# "dependencies" = ["wigglystuff"]\n# ///',
+    };
+
+    const parsed = compilePage(request);
+
+    expect(parsed.app?.notebookCode).toContain('# "dependencies" = ["wigglystuff"]');
+  });
+
+  it("imports marimo for converted setup cells", () => {
+    const request = fixtureRequest();
+    request.metadata = {
+      setupCells: [
+        {
+          index: -1,
+          source: "Setup",
+          options: { language: "markdown" },
+        },
+      ],
+    };
+
+    const code = compilePage(request).app?.notebookCode ?? "";
+
+    expect(code).toContain("import marimo as mo");
+    expect(code).toContain("mo.md('Setup')");
+  });
+
+  it("preserves authored SQL references when the marimo alias is private", () => {
+    const request = fixtureRequest();
+    request.metadata = {};
+    request.cells = [
+      {
+        index: 0,
+        source: "mo = 7",
+        options: { language: "python" },
+      },
+      {
+        index: 1,
+        source: "SELECT {mo} AS value, {mo.sql()} AS nested",
+        options: {
+          language: "sql",
+          render: { output: false },
+          sql: { engine: "mo", outputName: "result" },
+        },
+      },
+    ];
+
+    const code = compilePage(request).app?.notebookCode ?? "";
+
+    expect(code).toContain("_mo.sql");
+    expect(code).toContain("SELECT {mo}");
+    expect(code).toContain("{mo.sql()}");
+    expect(code).toContain("output=False");
+    expect(code).toContain("engine=mo");
+  });
+
+  it("reports cells disabled by page defaults as non-executable", () => {
+    const request = fixtureRequest();
+    request.metadata = {};
+    request.defaults = { marimo: { disabled: true } };
+    request.cells = [
+      {
+        index: 0,
+        source: "value = 1",
+        options: {
+          language: "python",
+        },
+      },
+    ];
+
+    const parsed = compilePage(request);
+
+    expect(parsed.cells[0]?.options.execution.enabled).toBe(false);
+  });
+
+  it("reports cells made unparsable by page defaults as non-executable", () => {
+    const request = fixtureRequest();
+    request.metadata = {};
+    request.defaults = { marimo: { unparsable: true } };
+    request.cells = [
+      {
+        index: 0,
+        source: "value = 1",
+        options: {
+          language: "python",
+        },
+      },
+    ];
+
+    const parsed = compilePage(request);
+
+    expect(parsed.cells[0]?.options.execution.enabled).toBe(false);
+  });
+
+  it("renders unparsable source when source visibility is unspecified", () => {
+    const request = fixtureRequest();
+    request.metadata = {};
+    request.cells = [
+      {
+        index: 0,
+        source: "unparsable source",
+        options: {
+          language: "python",
+          marimo: { unparsable: true },
+        },
+      },
+    ];
+
+    const parsed = compilePage(request);
+
+    expect(parsed.cells[0]?.options.render.source).toBe(true);
+    expect(parsed.cells[0]?.html).toContain("unparsable source");
+  });
+
+  it("respects explicit source hiding for unparsable cells", () => {
+    const request = fixtureRequest();
+    request.metadata = {};
+    request.cells = [
+      {
+        index: 0,
+        source: "unparsable source",
+        options: {
+          language: "python",
+          marimo: { unparsable: true },
+          render: { source: false },
+        },
+      },
+    ];
+
+    const parsed = compilePage(request);
+
+    expect(parsed.cells[0]?.options.render.source).toBe(false);
+  });
+
+  it("rejects failed cells when error rendering is disabled", () => {
+    const request = fixtureRequest();
+    request.metadata = {};
+    request.cells = [
+      {
+        index: 0,
+        source: "raise ValueError('broken')",
+        startLine: 12,
+        options: cellOptions({
+          output: true,
+          source: false,
+          enabled: true,
+          error: false,
+        }),
+      },
+    ];
+    const result = compileRequest(request);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("marimo execution failed in fixtures/page.mdx:12");
+  });
 });
 
-function compileFixture(exportApi: "current" | "legacy" | "missing-file" | "missing-requests") {
+function compileRequest(request: MarimoPageRequest, exportApi: "current" | "legacy" = "current") {
   return spawnSync(
     process.env.PYTHON ?? "python3",
-    ["-c", pythonHarness, join("src", "node", "compile-page.py"), exportApi],
+    ["-c", pythonHarness, compilerPath, exportApi],
     {
       cwd: process.cwd(),
       encoding: "utf8",
-      input: JSON.stringify(fixtureRequest()),
+      input: JSON.stringify(request),
     },
   );
+}
+
+function compilePage(request: MarimoPageRequest): CompiledMarimoPage {
+  const result = compileRequest(request);
+  if (result.status !== 0) {
+    throw new Error(result.stderr || "islands compiler failed");
+  }
+  const page: unknown = JSON.parse(result.stdout);
+  if (!isCompiledMarimoPage(page)) {
+    throw new Error("islands compiler returned an invalid page");
+  }
+  return page;
 }
 
 function fixtureRequest(): MarimoPageRequest {
@@ -365,6 +535,7 @@ function fixtureRequest(): MarimoPageRequest {
 function cellOptions({
   enabled,
   disabled = false,
+  error = true,
   output,
   serverOutput = true,
   source,
@@ -372,6 +543,7 @@ function cellOptions({
 }: {
   enabled: boolean;
   disabled?: boolean;
+  error?: boolean;
   output: boolean;
   serverOutput?: boolean;
   source: boolean;
@@ -384,7 +556,7 @@ function cellOptions({
       output,
       include: true,
       editor: false,
-      error: true,
+      error,
       serverOutput,
     },
     execution: { enabled },

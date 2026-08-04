@@ -1,5 +1,4 @@
 import type {
-  CompiledMarimoCell,
   CompiledMarimoPage,
   MarimoCellRequest,
   MarimoDiagnostic,
@@ -7,12 +6,14 @@ import type {
   MarimoPageRequest,
 } from "@marimo-team/mdx-marimo/bridge/protocol";
 import {
+  encodePageCellPayload,
   MARIMO_PAGE_PROTOCOL_VERSION,
-  pageCellPayload,
+  projectPageCellPayloads,
+  type MarimoPageSerializedCellPayload,
 } from "@marimo-team/mdx-marimo/bridge/protocol";
 import MarkdownIt from "markdown-it";
-import { Buffer } from "node:buffer";
 import { fenceLanguage, isMarimoConfigFence, isMarimoFence } from "../../authoring/fences";
+import { defaultMarimoElementName, mdxMarimoHost } from "../../element/name";
 import { parseFenceOptions } from "../../authoring/options";
 import type { CompileMarimoPageOptions } from "../../node/compile";
 import { pageRequest, publicFilename, type MarimoPageIdentity } from "../../remark/identity";
@@ -95,7 +96,10 @@ export function marimoVitePress({
       reportCompilerDiagnostics(this, page.diagnostics, filename, collected.edits);
 
       const replacements = new Map(
-        page.cells.map((cell) => [cell.index, renderMarimoIsland(page, cell, theme)]),
+        projectPageCellPayloads(page).map((payload, index) => [
+          page.cells[index]!.index,
+          payload ? renderMarimoIsland(payload, theme) : "",
+        ]),
       );
       return {
         code: applyEdits(source, collected.edits, replacements),
@@ -290,29 +294,20 @@ function formatDiagnostic(
 }
 
 function renderMarimoIsland(
-  page: CompiledMarimoPage,
-  cell: CompiledMarimoCell,
+  payload: MarimoPageSerializedCellPayload,
   theme: "auto" | "light" | "dark",
 ): string {
-  if (
-    !cell.options.render.include ||
-    (!cell.options.render.source && !cell.options.render.output)
-  ) {
-    return "";
-  }
-
-  const payload = pageCellPayload(page, cell);
-  const encodedPayload = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+  const appId = "app" in payload ? payload.app?.id : payload.appId;
   return [
-    "<marimo-mdx-island",
+    `<${defaultMarimoElementName}`,
     'class="marimo-island-host"',
-    'data-marimo-host="mdx"',
+    `data-marimo-host="${mdxMarimoHost}"`,
     `data-marimo-theme-mode="${theme}"`,
-    `data-marimo-app-id="${page.app?.id ?? ""}"`,
-    `data-marimo-cell-index="${cell.index}"`,
+    `data-marimo-app-id="${appId ?? ""}"`,
+    `data-marimo-cell-index="${payload.cell.index}"`,
     'data-marimo-payload-encoding="base64url"',
-    `data-marimo-payload="${encodedPayload}"`,
-    "></marimo-mdx-island>",
+    `data-marimo-payload="${encodePageCellPayload(payload)}"`,
+    `></${defaultMarimoElementName}>`,
   ].join(" ");
 }
 

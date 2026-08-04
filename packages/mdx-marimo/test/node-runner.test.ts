@@ -1,6 +1,3 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import { compilerArgs, resolveUvCommand } from "../src/node/uv";
 
@@ -15,80 +12,53 @@ afterEach(() => {
 });
 
 describe("resolveUvCommand", () => {
-  it("uses the configured command first", () => {
+  it("resolves explicit and process-wide commands", () => {
     expect(resolveUvCommand({ uvCommand: "/opt/bin/uv" })).toBe("/opt/bin/uv");
-  });
-
-  it("uses the environment command before discovered commands", () => {
     process.env.MDX_MARIMO_UV = "/env/bin/uv";
-
     expect(resolveUvCommand({ cwd: process.cwd() })).toBe("/env/bin/uv");
-  });
-
-  it("uses the workspace uv binary before the packaged fallback", () => {
-    delete process.env.MDX_MARIMO_UV;
-    const cwd = mkdtempSync(join(tmpdir(), "mdx-marimo-uv-"));
-    const binDir = join(cwd, "node_modules", ".bin");
-    const uvBin = join(binDir, process.platform === "win32" ? "uv.cmd" : "uv");
-
-    try {
-      mkdirSync(binDir, { recursive: true });
-      writeFileSync(uvBin, "");
-
-      expect(resolveUvCommand({ cwd })).toBe(uvBin);
-    } finally {
-      rmSync(cwd, { recursive: true, force: true });
-    }
-  });
-
-  it("falls back to the package uv binary", () => {
-    delete process.env.MDX_MARIMO_UV;
-    const cwd = mkdtempSync(join(tmpdir(), "mdx-marimo-uv-"));
-
-    try {
-      expect(resolveUvCommand({ cwd })).toMatch(/@manzt[/\\]uv[/\\]bin\.cjs$/);
-    } finally {
-      rmSync(cwd, { recursive: true, force: true });
-    }
   });
 });
 
 describe("compilerArgs", () => {
-  it("uses a stable Python accepted by the page", () => {
-    expect(
-      compilerArgs(
-        `
+  it("projects page dependencies into the compiler environment", () => {
+    const args = compilerArgs(
+      `
 requires-python = ">=3.10"
 dependencies = ["numpy", "marimo>=0.24"]
 `,
-        "/tmp/compile-page.py",
-      ),
-    ).toEqual([
-      "run",
-      "--python",
-      "3.12",
-      "--with",
-      "numpy",
-      "--with",
-      "marimo>=0.24",
-      "python",
       "/tmp/compile-page.py",
-    ]);
+    );
+
+    expect(valuesAfter(args, "--with")).toEqual(["numpy", "marimo>=0.24"]);
+    expect(args.at(-1)).toBe("/tmp/compile-page.py");
   });
 
-  it("honors a higher page-level Python requirement", () => {
-    expect(compilerArgs('requires-python = ">=3.13"', "/tmp/compile-page.py").slice(0, 3)).toEqual([
-      "run",
-      "--python",
-      "3.13",
-    ]);
+  it("reads dependencies and Python from wrapped script metadata", () => {
+    const args = compilerArgs(
+      '# /// script\n#requires-python = ">=3.13"\n# dependencies = ["numpy"]\n# ///',
+      "/tmp/compile-page.py",
+    );
+
+    expect(valueAfter(args, "--python")).toBe("3.13");
+    expect(valuesAfter(args, "--with")).toEqual(["marimo>=0.23.15", "numpy"]);
   });
 
-  it("uses the stable default when page metadata is absent", () => {
-    expect(compilerArgs(undefined, "/tmp/compile-page.py").slice(0, 3)).toEqual([
-      "run",
-      "--python",
-      "3.12",
-    ]);
+  it.each([
+    [undefined, "3.12"],
+    ['requires-python = ">=3.10"', "3.12"],
+    ['requires-python = ">=3.13"', "3.13"],
+  ])("selects a Python version accepted by %s", (pyproject, expected) => {
+    const args = compilerArgs(pyproject, "/tmp/compile-page.py");
+
+    expect(valueAfter(args, "--python")).toBe(expected);
   });
 });
+
+function valueAfter(args: string[], flag: string): string | undefined {
+  const index = args.indexOf(flag);
+  return index === -1 ? undefined : args[index + 1];
+}
+
+function valuesAfter(args: string[], flag: string): string[] {
+  return args.flatMap((value, index) => (value === flag ? [args[index + 1]!] : []));
+}

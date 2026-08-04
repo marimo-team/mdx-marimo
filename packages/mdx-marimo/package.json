@@ -26,7 +26,6 @@
   "type": "module",
   "sideEffects": [
     "./dist/element/auto.js",
-    "./dist/bridge/styles.css",
     "./dist/styles.css"
   ],
   "exports": {
@@ -65,11 +64,6 @@
       "import": "./dist/adapters/vitepress/index.js",
       "default": "./dist/adapters/vitepress/index.js"
     },
-    "./bridge": {
-      "types": "./dist/bridge/index.d.ts",
-      "import": "./dist/bridge/index.js",
-      "default": "./dist/bridge/index.js"
-    },
     "./bridge/browser": {
       "types": "./dist/bridge/browser/index.d.ts",
       "import": "./dist/bridge/browser/index.js",
@@ -85,7 +79,7 @@
       "import": "./dist/bridge/protocol/index.js",
       "default": "./dist/bridge/protocol/index.js"
     },
-    "./bridge/styles.css": "./dist/bridge/styles.css",
+    "./bridge/styles.css": "./dist/styles.css",
     "./styles.css": "./dist/styles.css",
     "./package.json": "./package.json"
   },

@@ -4,7 +4,6 @@ import { defineConfig } from "vite-plus";
 const source = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
 const bridgeEntries = {
-  "bridge/index": "../islands-bridge/src/index.ts",
   "bridge/browser/index": "../islands-bridge/src/browser/index.ts",
   "bridge/element/index": "../islands-bridge/src/element/index.ts",
   "bridge/protocol/index": "../islands-bridge/src/protocol/index.ts",
@@ -39,10 +38,6 @@ export default defineConfig({
       {
         find: "@marimo-team/mdx-marimo/bridge/protocol",
         replacement: source("./src/bridge/protocol.ts"),
-      },
-      {
-        find: /^@marimo-team\/mdx-marimo\/bridge$/,
-        replacement: source("./src/bridge/index.ts"),
       },
       {
         find: "@marimo-team/mdx-marimo/element/auto",
@@ -86,7 +81,7 @@ export default defineConfig({
         "node/index": "src/node/index.ts",
         "remark/index": "src/remark/index.ts",
       },
-      copy: [{ from: "src/node/compile-page.py", to: "dist/node" }],
+      copy: [{ from: "../islands-compiler/compiler.py", to: "dist/node" }],
       deps: {
         neverBundle: [/^node:/, /^@marimo-team\/mdx-marimo\/.+$/],
       },
@@ -115,15 +110,6 @@ export default defineConfig({
       platform: "neutral",
       sourcemap: true,
       target: "es2022",
-    },
-    {
-      name: "mdx-marimo-bridge-styles",
-      entry: ["../islands-bridge/src/styles.css"],
-      clean: false,
-      css: {
-        fileName: "bridge/styles.css",
-      },
-      dts: false,
     },
     {
       name: "mdx-marimo-styles",
