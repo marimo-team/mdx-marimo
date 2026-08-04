@@ -381,63 +381,30 @@ describe("islands compiler", () => {
     expect(parsed.cells[0]?.options.execution.enabled).toBe(false);
   });
 
-  it("reports cells made unparsable by page defaults as non-executable", () => {
+  it("renders default-unparsable source unless the cell hides it", () => {
     const request = fixtureRequest();
     request.metadata = {};
     request.defaults = { marimo: { unparsable: true } };
     request.cells = [
       {
         index: 0,
-        source: "value = 1",
-        options: {
-          language: "python",
-        },
+        source: "unparsable source",
+        options: { language: "python" },
+      },
+      {
+        index: 1,
+        source: "hidden unparsable source",
+        options: { language: "python", render: { source: false } },
       },
     ];
 
     const parsed = compilePage(request);
 
     expect(parsed.cells[0]?.options.execution.enabled).toBe(false);
-  });
-
-  it("renders unparsable source when source visibility is unspecified", () => {
-    const request = fixtureRequest();
-    request.metadata = {};
-    request.cells = [
-      {
-        index: 0,
-        source: "unparsable source",
-        options: {
-          language: "python",
-          marimo: { unparsable: true },
-        },
-      },
-    ];
-
-    const parsed = compilePage(request);
-
     expect(parsed.cells[0]?.options.render.source).toBe(true);
     expect(parsed.cells[0]?.html).toContain("unparsable source");
-  });
-
-  it("respects explicit source hiding for unparsable cells", () => {
-    const request = fixtureRequest();
-    request.metadata = {};
-    request.cells = [
-      {
-        index: 0,
-        source: "unparsable source",
-        options: {
-          language: "python",
-          marimo: { unparsable: true },
-          render: { source: false },
-        },
-      },
-    ];
-
-    const parsed = compilePage(request);
-
-    expect(parsed.cells[0]?.options.render.source).toBe(false);
+    expect(parsed.cells[1]?.options.execution.enabled).toBe(false);
+    expect(parsed.cells[1]?.options.render.source).toBe(false);
   });
 
   it("rejects failed cells when error rendering is disabled", () => {

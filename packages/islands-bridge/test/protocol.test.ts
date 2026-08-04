@@ -5,6 +5,7 @@ import {
   isCompiledMarimoPage,
   isMarimoPageCellPayload,
   isMarimoPageCellReferencePayload,
+  pageCellReferencePayload,
   pageCellPayload,
   projectPageCellPayloads,
   type CompiledMarimoPage,
@@ -26,10 +27,8 @@ describe("marimo page protocol", () => {
     const payloads = projectPageCellPayloads(page);
 
     expect(payloads).toHaveLength(3);
-    expect(isMarimoPageCellPayload(payloads[0])).toBe(true);
     expect(payloads[0]).toMatchObject({ app: { id: "marimo-test" }, cell: { index: 0 } });
     expect(payloads[1]).toBeNull();
-    expect(isMarimoPageCellReferencePayload(payloads[2])).toBe(true);
     expect(payloads[2]).toMatchObject({ appId: "marimo-test", cell: { index: 2 } });
     expect(payloads[0]?.cell).not.toHaveProperty("output");
     expect(payloads[2]?.cell).not.toHaveProperty("output");
@@ -75,12 +74,15 @@ describe("marimo page protocol", () => {
   it("validates compiler and browser records at the v2 boundary", () => {
     const page = compiledPage();
     const payload = pageCellPayload(page, page.cells[0]!);
+    const reference = pageCellReferencePayload(page, page.cells[0]!);
 
     expect(MARIMO_PAGE_PROTOCOL_VERSION).toBe(2);
     expect(isCompiledMarimoPage(page)).toBe(true);
     expect(isMarimoPageCellPayload(payload)).toBe(true);
+    expect(isMarimoPageCellReferencePayload(reference)).toBe(true);
     expect(isCompiledMarimoPage({ ...page, cells: [payload.cell] })).toBe(false);
     expect(isMarimoPageCellPayload({ ...payload, protocolVersion: 1 })).toBe(false);
+    expect(isMarimoPageCellReferencePayload({ ...reference, appId: "" })).toBe(false);
   });
 });
 

@@ -1,4 +1,10 @@
-import { mountMarimoIsland, renderMarimoIslandError } from "../browser/island";
+import {
+  assertCurrentDocument,
+  mountMarimoIsland,
+  reconnectMarimoIsland,
+  renderMarimoIslandError,
+} from "../browser/island";
+import { type MarimoThemeMode, type MarimoThemeResolver } from "../browser/theme";
 import {
   isMarimoPageCellPayload,
   isMarimoPageCellReferencePayload,
@@ -11,6 +17,22 @@ import {
 export type DefineMarimoIslandElementOptions = {
   name: string;
   host?: string;
+  themeResolver?: MarimoThemeResolver;
+};
+
+export type MarimoIslandElement = HTMLElement & {
+  payload: MarimoPageSerializedCellPayload | undefined;
+};
+
+export type MountMarimoIslandElementOptions = DefineMarimoIslandElementOptions & {
+  releaseDelayFrames?: number;
+  retentionKey?: string;
+  theme?: MarimoThemeMode;
+};
+
+export type MarimoIslandElementMount = {
+  element: MarimoIslandElement;
+  release: () => void;
 };
 
 type RegisteredPageApp = {
@@ -18,23 +40,138 @@ type RegisteredPageApp = {
   owners: Set<object>;
 };
 
-const pageApps = new Map<string, RegisteredPageApp>();
-const pageAppWaiters = new Map<string, Set<() => void>>();
+type PageAppDocumentState = {
+  apps: Map<string, RegisteredPageApp>;
+  waiters: Map<string, Set<() => void>>;
+};
+
+type RetainedElementMount = {
+  cancelRelease?: () => void;
+  element: RetainableMarimoIslandElement;
+  host: ElementMountHost;
+  payloadRevision: string;
+  registryKey?: string;
+};
+
+type RetainableMarimoIslandElement = MarimoIslandElement & {
+  [elementRetentionSymbol]?: RetainedElementMount;
+  [finishRetainedReleaseSymbol]?: () => void;
+};
+
+type ElementMountHost = HTMLElement & {
+  [elementMountSymbol]?: RetainedElementMount;
+};
+
+type ElementMountDocument = Document & {
+  [elementMountRegistrySymbol]?: Map<string, RetainedElementMount>;
+  [pageAppRegistrySymbol]?: PageAppDocumentState;
+};
+
+const elementMountSymbol = Symbol.for("@marimo-team/islands-bridge/element-mount");
+const elementMountRegistrySymbol = Symbol.for("@marimo-team/islands-bridge/element-mount-registry");
+const pageAppRegistrySymbol = Symbol.for("@marimo-team/islands-bridge/page-app-registry");
+const elementRetentionSymbol = Symbol.for("@marimo-team/islands-bridge/element-retention");
+const finishRetainedReleaseSymbol = Symbol.for(
+  "@marimo-team/islands-bridge/finish-retained-release",
+);
 
 export function defineMarimoIslandElement({
   name,
   host,
+  themeResolver,
 }: DefineMarimoIslandElementOptions): CustomElementConstructor | undefined {
   if (typeof customElements === "undefined" || typeof HTMLElement === "undefined") return undefined;
   const existing = customElements.get(name);
   if (existing) return existing;
-  const constructor = createMarimoIslandElementConstructor(host);
+  const constructor = createMarimoIslandElementConstructor(host, themeResolver);
   customElements.define(name, constructor);
   return constructor;
 }
 
+export function mountMarimoIslandElement(
+  parent: HTMLElement,
+  payload: MarimoPageSerializedCellPayload,
+  options: MountMarimoIslandElementOptions,
+): MarimoIslandElementMount {
+  assertCurrentDocument(parent);
+  const releaseDelayFrames = options.releaseDelayFrames ?? 0;
+  if (!Number.isInteger(releaseDelayFrames) || releaseDelayFrames < 0) {
+    throw new TypeError("releaseDelayFrames must be a non-negative integer");
+  }
+  const constructor = defineMarimoIslandElement(options);
+  if (!constructor) {
+    throw new Error("Custom elements are unavailable");
+  }
+
+  const host = parent as ElementMountHost;
+  const registry = elementMountRegistry(parent.ownerDocument);
+  const retentionKey = options.retentionKey ?? payloadRetentionKey(payload);
+  const registryKey = retentionKey ? `${options.name}\0${retentionKey}` : undefined;
+  const hostMount = host[elementMountSymbol];
+  let previous = (registryKey ? registry.get(registryKey) : undefined) ?? hostMount;
+  if (hostMount && hostMount !== previous) disposeRetainedMount(hostMount, registry);
+  const payloadRevision = JSON.stringify(payload);
+  if (previous && previous.payloadRevision !== payloadRevision) {
+    disposeRetainedMount(previous, registry);
+    previous = undefined;
+  }
+  previous?.cancelRelease?.();
+  if (
+    previous?.registryKey &&
+    previous.registryKey !== registryKey &&
+    registry.get(previous.registryKey) === previous
+  ) {
+    registry.delete(previous.registryKey);
+  }
+
+  let element = previous?.element;
+  if (!element) {
+    element = parent.ownerDocument.createElement(options.name) as RetainableMarimoIslandElement;
+    element.payload = payload;
+  }
+  element.dataset.marimoThemeMode = options.theme ?? "auto";
+  if (element.parentElement !== parent) parent.append(element);
+
+  if (previous && previous.host !== host && previous.host[elementMountSymbol] === previous) {
+    delete previous.host[elementMountSymbol];
+  }
+
+  const state: RetainedElementMount = {
+    element,
+    host,
+    payloadRevision,
+    ...(registryKey ? { registryKey } : {}),
+  };
+  host[elementMountSymbol] = state;
+  element[elementRetentionSymbol] = state;
+  if (registryKey) registry.set(registryKey, state);
+
+  return {
+    element,
+    release: () => {
+      if (host[elementMountSymbol] !== state) return;
+      const finishRelease = () => {
+        const current = registryKey ? registry.get(registryKey) : host[elementMountSymbol];
+        if (current !== state) return;
+        disposeRetainedMount(state, registry);
+      };
+      if (releaseDelayFrames === 0) {
+        finishRelease();
+        return;
+      }
+      const cancelFrames = afterAnimationFrames(releaseDelayFrames, finishRelease);
+      const cancelRelease = () => {
+        cancelFrames();
+        if (state.cancelRelease === cancelRelease) delete state.cancelRelease;
+      };
+      state.cancelRelease = cancelRelease;
+    },
+  };
+}
+
 function createMarimoIslandElementConstructor(
   hostKind: string | undefined,
+  themeResolver: MarimoThemeResolver | undefined,
 ): CustomElementConstructor {
   // Some host bundles downlevel dependency classes. This callable superclass
   // preserves native HTMLElement construction in those builds.
@@ -47,40 +184,75 @@ function createMarimoIslandElementConstructor(
   const ElementBase = MarimoElementBase as unknown as typeof HTMLElement;
 
   return class MarimoIslandElement extends ElementBase {
-    static get observedAttributes(): string[] {
-      return ["data-marimo-theme-mode"];
-    }
-
     #cleanup: (() => void) | undefined;
     #appRegistration: { app: MarimoPageRuntime; release: () => void } | undefined;
     #cleanupAppWait: (() => void) | undefined;
+    #disconnectTimer: ReturnType<typeof setTimeout> | undefined;
     #mountQueued = false;
     #payload: MarimoPageCellPayload | undefined;
     #payloadObserver: MutationObserver | undefined;
+    #retainedDisconnect = false;
     #serializedPayload: MarimoPageSerializedCellPayload | undefined;
 
-    connectedCallback(): void {
-      this.#queueMount();
+    get payload(): MarimoPageSerializedCellPayload | undefined {
+      return this.#serializedPayload;
     }
 
-    disconnectedCallback(): void {
+    set payload(payload: MarimoPageSerializedCellPayload | undefined) {
+      if (
+        payload !== undefined &&
+        !isMarimoPageCellPayload(payload) &&
+        !isMarimoPageCellReferencePayload(payload)
+      ) {
+        throw new TypeError("Invalid marimo page cell payload");
+      }
+      if (payload === this.#serializedPayload) return;
+
       this.#cleanup?.();
       this.#cleanup = undefined;
       this.#stopAppRegistration();
       this.#stopAppWait();
       this.#stopPayloadWait();
-      if (this.#serializedPayload && isMarimoPageCellReferencePayload(this.#serializedPayload)) {
-        this.#payload = undefined;
+      this.#serializedPayload = payload;
+      this.#payload = undefined;
+      if (this.isConnected && payload) this.#queueMount();
+    }
+
+    connectedCallback(): void {
+      const retainedMount = this.#disconnectTimer !== undefined || this.#retainedDisconnect;
+      if (this.#disconnectTimer !== undefined) {
+        clearTimeout(this.#disconnectTimer);
+        this.#disconnectTimer = undefined;
+      }
+      this.#retainedDisconnect = false;
+      if (retainedMount && this.#cleanup) {
+        reconnectMarimoIsland(this);
+      } else {
+        this.#queueMount();
       }
     }
 
-    attributeChangedCallback(
-      _name: string,
-      oldValue: string | null,
-      newValue: string | null,
-    ): void {
-      if (oldValue === newValue) return;
-      if (this.isConnected && (this.#payload || this.#serializedPayload)) this.#queueMount();
+    disconnectedCallback(): void {
+      if (this.#disconnectTimer !== undefined) clearTimeout(this.#disconnectTimer);
+      this.#disconnectTimer = setTimeout(() => {
+        this.#disconnectTimer = undefined;
+        const retained = (this as RetainableMarimoIslandElement)[elementRetentionSymbol];
+        if (retained?.cancelRelease) {
+          this.#retainedDisconnect = true;
+          return;
+        }
+        this.#teardown();
+      }, 0);
+    }
+
+    [finishRetainedReleaseSymbol](): void {
+      if (this.isConnected) return;
+      if (this.#disconnectTimer !== undefined) {
+        clearTimeout(this.#disconnectTimer);
+        this.#disconnectTimer = undefined;
+      }
+      this.#retainedDisconnect = false;
+      this.#teardown();
     }
 
     #queueMount(): void {
@@ -100,8 +272,8 @@ function createMarimoIslandElementConstructor(
           return;
         }
 
-        this.#registerSerializedApp();
-        this.#payload = this.#payload ?? resolvePayload(this.#serializedPayload);
+        this.#payload =
+          this.#payload ?? resolvePayload(this.ownerDocument, this.#serializedPayload);
         if (!this.#payload) {
           const reference = this.#serializedPayload;
           if (!isMarimoPageCellReferencePayload(reference)) {
@@ -109,18 +281,19 @@ function createMarimoIslandElementConstructor(
           }
           this.#cleanup ??= mountMarimoIsland(this, staticPayload(reference), {
             ...(hostKind ? { host: hostKind } : {}),
-            theme: themeFromElement(this),
+            ...(themeResolver ? { themeResolver } : {}),
           });
           this.#waitForApp(reference.appId);
           return;
         }
 
+        if (this.#payload.app) this.#registerApp(this.#payload.app);
         this.#stopAppWait();
         this.#stopPayloadWait();
         this.#cleanup?.();
         this.#cleanup = mountMarimoIsland(this, this.#payload, {
           ...(hostKind ? { host: hostKind } : {}),
-          theme: themeFromElement(this),
+          ...(themeResolver ? { themeResolver } : {}),
         });
       } catch (error: unknown) {
         this.#cleanup?.();
@@ -145,21 +318,19 @@ function createMarimoIslandElementConstructor(
 
     #waitForApp(appId: string): void {
       if (this.#cleanupAppWait) return;
-      this.#cleanupAppWait = waitForPageApp(appId, () => {
+      this.#cleanupAppWait = waitForPageApp(this.ownerDocument, appId, () => {
         this.#cleanupAppWait = undefined;
         this.#queueMount();
       });
     }
 
-    #registerSerializedApp(): void {
-      const serialized = this.#serializedPayload;
-      if (!serialized || !isMarimoPageCellPayload(serialized) || !serialized.app) return;
-      if (this.#appRegistration?.app === serialized.app) return;
+    #registerApp(app: MarimoPageRuntime): void {
+      if (this.#appRegistration?.app === app) return;
 
       this.#stopAppRegistration();
       this.#appRegistration = {
-        app: serialized.app,
-        release: registerPageApp(serialized.app, this),
+        app,
+        release: registerPageApp(this.ownerDocument, app, this),
       };
     }
 
@@ -177,6 +348,17 @@ function createMarimoIslandElementConstructor(
       this.#payloadObserver?.disconnect();
       this.#payloadObserver = undefined;
     }
+
+    #teardown(): void {
+      this.#cleanup?.();
+      this.#cleanup = undefined;
+      this.#stopAppRegistration();
+      this.#stopAppWait();
+      this.#stopPayloadWait();
+      if (this.#serializedPayload && isMarimoPageCellReferencePayload(this.#serializedPayload)) {
+        this.#payload = undefined;
+      }
+    }
   };
 }
 
@@ -189,13 +371,14 @@ function readPayload(host: HTMLElement): MarimoPageSerializedCellPayload | undef
 }
 
 function resolvePayload(
+  document: Document,
   payload: MarimoPageSerializedCellPayload,
 ): MarimoPageCellPayload | undefined {
   if (isMarimoPageCellPayload(payload)) {
     return payload;
   }
 
-  const registration = pageApps.get(payload.appId);
+  const registration = pageAppDocumentState(document).apps.get(payload.appId);
   if (!registration) return undefined;
   return {
     protocolVersion: payload.protocolVersion,
@@ -212,33 +395,35 @@ function staticPayload(payload: MarimoPageCellReferencePayload): MarimoPageCellP
   };
 }
 
-function registerPageApp(app: MarimoPageRuntime, owner: object): () => void {
-  let registration = pageApps.get(app.id);
+function registerPageApp(document: Document, app: MarimoPageRuntime, owner: object): () => void {
+  const state = pageAppDocumentState(document);
+  let registration = state.apps.get(app.id);
   if (!registration || registration.app !== app) {
     registration = { app, owners: new Set() };
-    pageApps.set(app.id, registration);
+    state.apps.set(app.id, registration);
   }
   registration.owners.add(owner);
-  const waiters = pageAppWaiters.get(app.id);
+  const waiters = state.waiters.get(app.id);
   if (waiters) {
-    pageAppWaiters.delete(app.id);
+    state.waiters.delete(app.id);
     for (const waiter of waiters) waiter();
   }
 
   return () => {
-    if (pageApps.get(app.id) !== registration) return;
+    if (state.apps.get(app.id) !== registration) return;
     registration.owners.delete(owner);
-    if (registration.owners.size === 0) pageApps.delete(app.id);
+    if (registration.owners.size === 0) state.apps.delete(app.id);
   };
 }
 
-function waitForPageApp(appId: string, mount: () => void): () => void {
-  const waiters = pageAppWaiters.get(appId) ?? new Set<() => void>();
+function waitForPageApp(document: Document, appId: string, mount: () => void): () => void {
+  const state = pageAppDocumentState(document);
+  const waiters = state.waiters.get(appId) ?? new Set<() => void>();
   waiters.add(mount);
-  pageAppWaiters.set(appId, waiters);
+  state.waiters.set(appId, waiters);
   return () => {
     waiters.delete(mount);
-    if (waiters.size === 0) pageAppWaiters.delete(appId);
+    if (waiters.size === 0) state.waiters.delete(appId);
   };
 }
 
@@ -264,7 +449,62 @@ function decodeBase64Url(value: string): string {
   return new TextDecoder().decode(bytes);
 }
 
-function themeFromElement(host: HTMLElement): "auto" | "light" | "dark" {
-  const theme = host.getAttribute("data-marimo-theme-mode");
-  return theme === "light" || theme === "dark" ? theme : "auto";
+function payloadRetentionKey(payload: MarimoPageSerializedCellPayload): string | undefined {
+  const appId = isMarimoPageCellPayload(payload) ? payload.app?.id : payload.appId;
+  return appId ? `${appId}:${payload.cell.index}` : undefined;
+}
+
+function disposeRetainedMount(
+  state: RetainedElementMount,
+  registry: Map<string, RetainedElementMount>,
+): void {
+  state.cancelRelease?.();
+  delete state.cancelRelease;
+  state.element.remove();
+  state.element[finishRetainedReleaseSymbol]?.();
+  if (state.host[elementMountSymbol] === state) delete state.host[elementMountSymbol];
+  if (state.registryKey && registry.get(state.registryKey) === state) {
+    registry.delete(state.registryKey);
+  }
+  if (state.element[elementRetentionSymbol] === state) {
+    delete state.element[elementRetentionSymbol];
+  }
+}
+
+function elementMountRegistry(document: Document): Map<string, RetainedElementMount> {
+  const owner = document as ElementMountDocument;
+  return (owner[elementMountRegistrySymbol] ??= new Map());
+}
+
+function pageAppDocumentState(document: Document): PageAppDocumentState {
+  const owner = document as ElementMountDocument;
+  return (owner[pageAppRegistrySymbol] ??= {
+    apps: new Map(),
+    waiters: new Map(),
+  });
+}
+
+function afterAnimationFrames(frameCount: number, callback: () => void): () => void {
+  if (frameCount === 0) {
+    callback();
+    return () => {};
+  }
+
+  let active = true;
+  let handle: number | undefined;
+  const advance = (remaining: number) => {
+    handle = globalThis.requestAnimationFrame(() => {
+      if (!active) return;
+      if (remaining === 1) {
+        callback();
+      } else {
+        advance(remaining - 1);
+      }
+    });
+  };
+  advance(frameCount);
+  return () => {
+    active = false;
+    if (handle !== undefined) globalThis.cancelAnimationFrame(handle);
+  };
 }

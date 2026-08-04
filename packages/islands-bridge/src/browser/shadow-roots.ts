@@ -7,40 +7,46 @@ export function installMarimoShadowThemeBridge(
   host: HTMLElement,
   resolveTheme: () => ResolvedMarimoTheme,
 ): () => void {
-  const observedRoots = new WeakSet<ShadowRoot>();
-  const observers: MutationObserver[] = [];
+  const observers = new Map<ShadowRoot, MutationObserver>();
+  const ownerDocument = host.ownerDocument ?? document;
 
   const sync = () => {
     const theme = resolveTheme();
     applyMarimoShadowTheme(host, theme);
 
-    for (const element of shadowHostsIn(host)) {
-      const root = element.shadowRoot;
-      if (observedRoots.has(root)) continue;
+    const roots = new Set(shadowHostsIn(host, ownerDocument).map((element) => element.shadowRoot));
+    for (const [root, observer] of observers) {
+      if (roots.has(root)) continue;
+      observer.disconnect();
+      observers.delete(root);
+    }
+    for (const root of roots) {
+      if (observers.has(root)) continue;
 
-      observedRoots.add(root);
       const observer = new MutationObserver(sync);
       observer.observe(root, { childList: true, subtree: true });
-      observers.push(observer);
+      observers.set(root, observer);
     }
   };
 
   const hostObserver = new MutationObserver(sync);
   hostObserver.observe(host, { childList: true, subtree: true });
-  observers.push(hostObserver);
 
   sync();
 
   const timers = [0, 50, 250, 1000].map((delay) => window.setTimeout(sync, delay));
 
   return () => {
-    for (const observer of observers) observer.disconnect();
+    hostObserver.disconnect();
+    for (const observer of observers.values()) observer.disconnect();
+    observers.clear();
     for (const timer of timers) window.clearTimeout(timer);
   };
 }
 
 export function applyMarimoShadowTheme(host: HTMLElement, theme: ResolvedMarimoTheme): void {
-  for (const element of shadowHostsIn(host)) {
+  const ownerDocument = host.ownerDocument ?? document;
+  for (const element of shadowHostsIn(host, ownerDocument)) {
     if (element.getAttribute("data-marimo-theme") !== theme) {
       element.setAttribute("data-marimo-theme", theme);
     }
@@ -52,7 +58,7 @@ export function applyMarimoShadowTheme(host: HTMLElement, theme: ResolvedMarimoT
   }
 }
 
-function shadowHostsIn(root: ParentNode): ShadowHost[] {
+function shadowHostsIn(root: ParentNode, document: Document): ShadowHost[] {
   const hosts: ShadowHost[] = [];
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
   let node = walker.nextNode();
@@ -61,7 +67,7 @@ function shadowHostsIn(root: ParentNode): ShadowHost[] {
     const element = node as Element;
     if (element.shadowRoot) {
       hosts.push(element as ShadowHost);
-      hosts.push(...shadowHostsIn(element.shadowRoot));
+      hosts.push(...shadowHostsIn(element.shadowRoot, document));
     }
     node = walker.nextNode();
   }
@@ -76,7 +82,7 @@ function ensureShadowThemeStyle(root: ShadowRoot): void {
     return;
   }
 
-  const style = document.createElement("style");
+  const style = root.ownerDocument.createElement("style");
   style.id = SHADOW_THEME_STYLE_ID;
   style.textContent = SHADOW_THEME_CSS;
   root.append(style);

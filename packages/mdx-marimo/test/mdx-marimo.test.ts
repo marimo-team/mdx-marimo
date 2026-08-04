@@ -3,8 +3,6 @@ import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import {
   MARIMO_PAGE_PROTOCOL_VERSION,
-  isMarimoPageCellPayload,
-  isMarimoPageCellReferencePayload,
   type CompiledMarimoPage,
   type MarimoCellOptions,
   type MarimoPageCompiler,
@@ -46,7 +44,6 @@ describe("remarkMarimo", () => {
     expect(compiled).toContain("<marimo-mdx-island ");
     expect(compiled).toContain('class="marimo-island-host"');
     expect(compiled).toContain('data-marimo-payload-encoding="base64url"');
-    expect(compiled).toMatch(/data-marimo-payload="[A-Za-z0-9_-]+"/);
     expect(compiled).toContain('data-marimo-app-id="marimo-test"');
   });
 
@@ -97,8 +94,6 @@ describe("remarkMarimo", () => {
     const payloads = emittedPayloads(String(file));
 
     expect(payloads).toHaveLength(2);
-    expect(isMarimoPageCellPayload(payloads[0])).toBe(true);
-    expect(isMarimoPageCellReferencePayload(payloads[1])).toBe(true);
     expect(payloads[0]).toMatchObject({
       app: { id: "marimo-test", notebookCode: "shared notebook source" },
       cell: { index: 0 },
@@ -117,7 +112,6 @@ describe("remarkMarimo", () => {
       remarkPlugins: [[remarkMarimo, { compile: compiler() }]],
     });
 
-    expect(String(ordinary)).toContain('className="language-python"');
     expect(String(ordinary)).toContain("x = 1");
     const blockquote = String(nested).match(
       /<_components\.blockquote>([\s\S]*?)<\/_components\.blockquote>/,

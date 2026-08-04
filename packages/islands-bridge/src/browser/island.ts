@@ -1,48 +1,111 @@
 import type { MarimoPageCellPayload } from "../protocol";
-import { ensureAssets } from "./assets";
+import { acquireAssets, hasConfirmedSoftNavigationAssets } from "./assets";
 import { retainDocumentNavigation } from "./navigation";
-import { applyMarimoTheme, installMarimoThemeBridge, type MarimoThemeMode } from "./theme";
+import {
+  applyMarimoTheme,
+  installMarimoThemeBridge,
+  refreshMarimoThemeBridge,
+  type MarimoThemeMode,
+  type MarimoThemeResolver,
+} from "./theme";
+import { themeModeFromHost } from "./theme-mode";
 
 export type MountMarimoIslandOptions = {
   host?: string;
   theme?: MarimoThemeMode;
+  themeResolver?: MarimoThemeResolver;
 };
+
+const reconnectors = new WeakMap<HTMLElement, () => void>();
+
+export function assertCurrentDocument(host: { ownerDocument: Document }): void {
+  if (typeof document !== "undefined" && host.ownerDocument !== document) {
+    throw new Error("Marimo islands must be mounted in the current document");
+  }
+}
+
+export function reconnectMarimoIsland(host: HTMLElement): void {
+  reconnectors.get(host)?.();
+}
 
 export function mountMarimoIsland(
   host: HTMLElement,
   payload: MarimoPageCellPayload,
   options: MountMarimoIslandOptions = {},
 ): () => void {
-  const releaseNavigation = retainDocumentNavigation();
-
-  const theme = options.theme ?? "auto";
+  assertCurrentDocument(host);
+  const initialTheme = options.theme ?? themeModeFromHost(host);
+  const currentTheme = () =>
+    options.theme === undefined || options.theme === "auto"
+      ? themeModeFromHost(host)
+      : options.theme;
   let active = true;
+  let activateAssets: (() => Promise<boolean>) | undefined;
+  let releaseAssets: (() => void) | undefined;
+  let releaseNavigation: (() => void) | undefined;
 
   host.classList.add("marimo-island-host");
   if (options.host) host.dataset.marimoHost = options.host;
-  host.dataset.marimoThemeMode = theme;
-  if (payload.app) host.dataset.marimoAppId = payload.app.id;
+  host.dataset.marimoThemeMode = initialTheme;
+  if (payload.app) {
+    host.dataset.marimoAppId = payload.app.id;
+  } else {
+    delete host.dataset.marimoAppId;
+  }
   host.dataset.marimoCellIndex = String(payload.cell.index);
   host.innerHTML = payload.cell.html;
 
-  const cleanupTheme = installMarimoThemeBridge(host, { theme });
+  if (!payload.app || !hasConfirmedSoftNavigationAssets(payload.app)) {
+    releaseNavigation = retainDocumentNavigation();
+  }
+
+  const cleanupTheme = installMarimoThemeBridge(host, {
+    ...(options.theme !== undefined ? { theme: options.theme } : {}),
+    ...(options.themeResolver ? { themeResolver: options.themeResolver } : {}),
+  });
+  const handleActivation = (supportsSoftNavigation: boolean) => {
+    if (!active) return;
+    if (supportsSoftNavigation) {
+      releaseNavigation?.();
+      releaseNavigation = undefined;
+    } else {
+      releaseNavigation ??= retainDocumentNavigation();
+    }
+    applyMarimoTheme(host, currentTheme(), options.themeResolver);
+  };
 
   if (payload.app) {
-    ensureAssets(payload.app)
-      .then(() => {
-        if (active) applyMarimoTheme(host, theme);
-      })
+    try {
+      const lease = acquireAssets(payload.app, host);
+      activateAssets = lease.activate;
+      releaseAssets = lease.release;
+      lease.ready.then(handleActivation).catch((error: unknown) => {
+        if (active) renderMarimoIslandError(host, error);
+      });
+    } catch (error: unknown) {
+      renderMarimoIslandError(host, error);
+    }
+  } else {
+    applyMarimoTheme(host, currentTheme(), options.themeResolver);
+  }
+
+  const reconnect = () => {
+    if (!active) return;
+    refreshMarimoThemeBridge(host);
+    void activateAssets?.()
+      .then(handleActivation)
       .catch((error: unknown) => {
         if (active) renderMarimoIslandError(host, error);
       });
-  } else {
-    applyMarimoTheme(host, theme);
-  }
+  };
+  reconnectors.set(host, reconnect);
 
   return () => {
     active = false;
+    if (reconnectors.get(host) === reconnect) reconnectors.delete(host);
+    releaseAssets?.();
     cleanupTheme();
-    releaseNavigation();
+    releaseNavigation?.();
     host.replaceChildren();
   };
 }
