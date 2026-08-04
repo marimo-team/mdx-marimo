@@ -114,12 +114,35 @@ class AppFileManager:
         return {"app": app, "filename": filename}
 
 
+@dataclass
+class NotebookExecutionOptions:
+    cli_args: dict
+    argv: list | None
+    persist_session: bool = True
+
+
+@dataclass
+class RunNotebookRequest:
+    file_manager: object
+    options: NotebookExecutionOptions
+
+
 async def run_app_until_completion(file_manager, cli_args, argv, persist_session):
     build_calls.append({
         "filename": file_manager["filename"],
         "cliArgs": cli_args,
         "argv": argv,
         "persistSession": persist_session,
+    })
+    return "session-view", False
+
+
+async def run_notebook(request):
+    build_calls.append({
+        "filename": request.file_manager["filename"],
+        "cliArgs": request.options.cli_args,
+        "argv": request.options.argv,
+        "persistSession": request.options.persist_session,
     })
     return "session-view", False
 
@@ -162,9 +185,16 @@ serialization.NotebookSerializationV1 = NotebookSerializationV1
 serialization.UnparsableCell = UnparsableCell
 sys.modules["marimo._schemas.serialization"] = serialization
 
-export_module = types.ModuleType("marimo._server.export")
-export_module.run_app_until_completion = run_app_until_completion
-sys.modules["marimo._server.export"] = export_module
+if sys.argv[2] == "current":
+    for name in ["marimo._export", "marimo._export.file", "marimo._export.requests"]:
+        sys.modules[name] = types.ModuleType(name)
+    sys.modules["marimo._export.file"].run_notebook = run_notebook
+    sys.modules["marimo._export.requests"].NotebookExecutionOptions = NotebookExecutionOptions
+    sys.modules["marimo._export.requests"].RunNotebookRequest = RunNotebookRequest
+else:
+    export_module = types.ModuleType("marimo._server.export")
+    export_module.run_app_until_completion = run_app_until_completion
+    sys.modules["marimo._server.export"] = export_module
 
 notebook_module = types.ModuleType("marimo._session.notebook")
 notebook_module.AppFileManager = AppFileManager
@@ -198,15 +228,7 @@ describe("compile-page.py", () => {
   });
 
   it("compiles fixture payloads into one page-level app", () => {
-    const result = spawnSync(
-      process.env.PYTHON ?? "python3",
-      ["-c", pythonHarness, join("src", "node", "compile-page.py")],
-      {
-        cwd: process.cwd(),
-        encoding: "utf8",
-        input: JSON.stringify(fixtureRequest()),
-      },
-    );
+    const result = compileFixture("current");
 
     expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
@@ -253,7 +275,34 @@ describe("compile-page.py", () => {
       },
     ]);
   });
+
+  it("supports marimo's legacy execution API", () => {
+    const result = compileFixture("legacy");
+
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout).buildCalls).toEqual([
+      {
+        filename: "fixtures/page.mdx",
+        cliArgs: {},
+        argv: null,
+        persistSession: false,
+      },
+    ]);
+  });
 });
+
+function compileFixture(exportApi: "current" | "legacy") {
+  return spawnSync(
+    process.env.PYTHON ?? "python3",
+    ["-c", pythonHarness, join("src", "node", "compile-page.py"), exportApi],
+    {
+      cwd: process.cwd(),
+      encoding: "utf8",
+      input: JSON.stringify(fixtureRequest()),
+    },
+  );
+}
 
 function fixtureRequest(): MarimoPageRequest {
   return {
