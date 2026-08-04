@@ -9,8 +9,8 @@
     "serve": "docusaurus serve --host 127.0.0.1 --port 4105"
   },
   "dependencies": {
-    "@docusaurus/core": "3.10.1",
-    "@docusaurus/preset-classic": "3.10.1",
+    "@docusaurus/core": "3.10.2",
+    "@docusaurus/preset-classic": "3.10.2",
     "@marimo-team/mdx-marimo": "workspace:*",
     "@mdx-js/react": "^3.1.1",
     "react": "^19.2.7",
