@@ -5,10 +5,10 @@
     "jsx": "react-jsx",
     "types": ["node"],
     "paths": {
-      "@marimo-team/islands-bridge": ["../islands-bridge/src/index.ts"],
-      "@marimo-team/islands-bridge/browser": ["../islands-bridge/src/browser/index.ts"],
-      "@marimo-team/islands-bridge/element": ["../islands-bridge/src/element/index.ts"],
-      "@marimo-team/islands-bridge/protocol": ["../islands-bridge/src/protocol/index.ts"],
+      "@marimo-team/mdx-marimo/bridge": ["./src/bridge/index.ts"],
+      "@marimo-team/mdx-marimo/bridge/browser": ["./src/bridge/browser.ts"],
+      "@marimo-team/mdx-marimo/bridge/element": ["./src/bridge/element.ts"],
+      "@marimo-team/mdx-marimo/bridge/protocol": ["./src/bridge/protocol.ts"],
       "@marimo-team/mdx-marimo/node": ["./src/node/index.ts"],
       "@marimo-team/mdx-marimo/remark": ["./src/remark/index.ts"]
     }

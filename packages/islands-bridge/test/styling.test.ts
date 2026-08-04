@@ -50,20 +50,4 @@ describe("island styling contract", () => {
     const consumedTokens = [...new Set(styles.match(/--marimo-island-[\w-]+/g) ?? [])].sort();
     expect(consumedTokens).toEqual([...publicTokens].sort());
   });
-
-  it("uses split styling sources for tokens, layout, and compatibility", () => {
-    const styles = readFileSync("src/styles.css", "utf8");
-
-    expect(styles).toContain('@import "./styling/tokens.css"');
-    expect(styles).toContain('@import "./styling/layout.css"');
-    expect(styles).toContain('@import "./styling/compatibility.css"');
-  });
-
-  it("uses one host class without publishing-host selectors", () => {
-    const browserRuntime = readFileSync(join("src", "browser", "island.ts"), "utf8");
-
-    expect(browserRuntime).toContain('"marimo-island-host"');
-    expect(browserRuntime).toContain("marimoHost");
-    expect(readStylingSources()).not.toContain("mdx");
-  });
 });

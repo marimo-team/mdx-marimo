@@ -8,7 +8,7 @@ export type UvOptions = {
   uvCommand?: string;
 };
 
-const defaultMarimoDependency = "marimo>=0.23.13";
+const defaultMarimoDependency = "marimo>=0.23.15";
 const defaultPythonVersion = "3.12";
 const nodeRequire = createRequire(import.meta.url);
 

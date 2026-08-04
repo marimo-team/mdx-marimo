@@ -6,7 +6,7 @@ import {
   isCompiledMarimoPage,
   type CompiledMarimoPage,
   type MarimoPageRequest,
-} from "@marimo-team/islands-bridge/protocol";
+} from "@marimo-team/mdx-marimo/bridge/protocol";
 
 export async function readCachedResult(
   cacheDir: string,

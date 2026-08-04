@@ -27,13 +27,13 @@ export default defineConfig({
       "browser/index": "src/browser/index.ts",
       "element/index": "src/element/index.ts",
       "protocol/index": "src/protocol/index.ts",
+      styles: "src/styles.css",
     },
-    copy: [
-      { from: "src/styles.css", to: "dist" },
-      { from: "src/styling/*.css", to: "dist/styling" },
-    ],
     dts: {
       sourcemap: true,
+    },
+    css: {
+      fileName: "styles.css",
     },
     format: ["esm"],
     platform: "neutral",

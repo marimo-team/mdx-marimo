@@ -7,7 +7,7 @@ import {
   type CompiledMarimoPage,
   type MarimoCellOptions,
   type MarimoPageRequest,
-} from "@marimo-team/islands-bridge/protocol";
+} from "@marimo-team/mdx-marimo/bridge/protocol";
 
 const pythonHarness = String.raw`
 import asyncio

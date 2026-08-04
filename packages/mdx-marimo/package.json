@@ -26,6 +26,7 @@
   "type": "module",
   "sideEffects": [
     "./dist/element/auto.js",
+    "./dist/bridge/styles.css",
     "./dist/styles.css"
   ],
   "exports": {
@@ -64,6 +65,27 @@
       "import": "./dist/adapters/vitepress/index.js",
       "default": "./dist/adapters/vitepress/index.js"
     },
+    "./bridge": {
+      "types": "./dist/bridge/index.d.ts",
+      "import": "./dist/bridge/index.js",
+      "default": "./dist/bridge/index.js"
+    },
+    "./bridge/browser": {
+      "types": "./dist/bridge/browser/index.d.ts",
+      "import": "./dist/bridge/browser/index.js",
+      "default": "./dist/bridge/browser/index.js"
+    },
+    "./bridge/element": {
+      "types": "./dist/bridge/element/index.d.ts",
+      "import": "./dist/bridge/element/index.js",
+      "default": "./dist/bridge/element/index.js"
+    },
+    "./bridge/protocol": {
+      "types": "./dist/bridge/protocol/index.d.ts",
+      "import": "./dist/bridge/protocol/index.js",
+      "default": "./dist/bridge/protocol/index.js"
+    },
+    "./bridge/styles.css": "./dist/bridge/styles.css",
     "./styles.css": "./dist/styles.css",
     "./package.json": "./package.json"
   },
@@ -77,7 +99,6 @@
   },
   "dependencies": {
     "@manzt/uv": "^0.8.13",
-    "@marimo-team/islands-bridge": "workspace:^",
     "@types/mdast": "^4.0.4",
     "acorn": "^8.17.0",
     "markdown-it": "^14.3.0",
@@ -86,6 +107,7 @@
     "unist-util-visit": "^5.1.0"
   },
   "devDependencies": {
+    "@marimo-team/islands-bridge": "workspace:*",
     "@mdx-js/mdx": "^3.1.1",
     "@types/estree": "^1.0.9",
     "@types/markdown-it": "^14.1.2",
@@ -99,8 +121,5 @@
     "react": {
       "optional": true
     }
-  },
-  "bundleDependencies": [
-    "@marimo-team/islands-bridge"
-  ]
+  }
 }

@@ -2,7 +2,7 @@ import type {
   MarimoCellOptions,
   MarimoDiagnostic,
   MarimoLanguage,
-} from "@marimo-team/islands-bridge/protocol";
+} from "@marimo-team/mdx-marimo/bridge/protocol";
 
 const booleanKeys = new Set([
   "echo",

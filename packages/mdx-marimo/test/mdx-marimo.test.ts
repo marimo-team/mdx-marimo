@@ -7,7 +7,7 @@ import {
   type MarimoCellOptions,
   type MarimoPageCompiler,
   type MarimoPageRequest,
-} from "@marimo-team/islands-bridge/protocol";
+} from "@marimo-team/mdx-marimo/bridge/protocol";
 import { remarkMarimo } from "../src/remark";
 
 describe("remarkMarimo", () => {

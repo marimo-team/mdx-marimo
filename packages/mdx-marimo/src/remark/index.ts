@@ -15,7 +15,7 @@ import {
   type MarimoPageRequest,
   type MarimoRuntimeAssets,
   type MarimoPageRuntime,
-} from "@marimo-team/islands-bridge/protocol";
+} from "@marimo-team/mdx-marimo/bridge/protocol";
 import { fenceLanguage, isMarimoConfigFence, isMarimoFence } from "../authoring/fences";
 import { parseFenceOptions } from "../authoring/options";
 import { defaultMarimoElementName } from "../element/name";
