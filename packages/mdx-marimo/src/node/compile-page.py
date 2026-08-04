@@ -287,22 +287,51 @@ def generator_from_ir(
 
 
 async def build_generator(generator: MarimoIslandGenerator) -> None:
-    from marimo._server.export import run_app_until_completion
     from marimo._session.notebook import AppFileManager
 
     if getattr(generator, "has_run", False):
         raise ValueError("marimo island generator has already been built")
 
     # Host builds should not create marimo session files beside MDX sources.
-    session, _did_error = await run_app_until_completion(
-        file_manager=AppFileManager.from_app(
-            getattr(generator, "_app"),
-            filename=getattr(generator, "_source_filename", None),
-        ),
-        cli_args={},
-        argv=None,
-        persist_session=False,
+    file_manager = AppFileManager.from_app(
+        getattr(generator, "_app"),
+        filename=getattr(generator, "_source_filename", None),
     )
+    # marimo 0.23.16 moved notebook execution to request objects.
+    try:
+        from marimo._export.file import run_notebook
+        from marimo._export.requests import (
+            NotebookExecutionOptions,
+            RunNotebookRequest,
+        )
+    except ModuleNotFoundError as error:
+        if error.name not in {
+            "marimo._export",
+            "marimo._export.file",
+            "marimo._export.requests",
+        }:
+            raise
+        from marimo._server.export import run_app_until_completion
+
+        session, _did_error = await run_app_until_completion(
+            file_manager=file_manager,
+            cli_args={},
+            argv=None,
+            quiet=True,
+            persist_session=False,
+        )
+    else:
+        session, _did_error = await run_notebook(
+            RunNotebookRequest(
+                file_manager=file_manager,
+                options=NotebookExecutionOptions(
+                    cli_args={},
+                    argv=None,
+                    quiet=True,
+                    persist_session=False,
+                ),
+            )
+        )
     generator.has_run = True
 
     for stub in generator.stubs:
