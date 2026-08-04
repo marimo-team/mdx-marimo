@@ -305,7 +305,11 @@ async def build_generator(generator: MarimoIslandGenerator) -> None:
             RunNotebookRequest,
         )
     except ModuleNotFoundError as error:
-        if error.name != "marimo._export":
+        if error.name not in {
+            "marimo._export",
+            "marimo._export.file",
+            "marimo._export.requests",
+        }:
             raise
         from marimo._server.export import run_app_until_completion
 
@@ -313,6 +317,7 @@ async def build_generator(generator: MarimoIslandGenerator) -> None:
             file_manager=file_manager,
             cli_args={},
             argv=None,
+            quiet=True,
             persist_session=False,
         )
     else:
@@ -322,6 +327,7 @@ async def build_generator(generator: MarimoIslandGenerator) -> None:
                 options=NotebookExecutionOptions(
                     cli_args={},
                     argv=None,
+                    quiet=True,
                     persist_session=False,
                 ),
             )
