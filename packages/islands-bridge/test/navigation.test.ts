@@ -68,6 +68,39 @@ describe("document navigation", () => {
     history.pushState({}, "", "/docs/fences");
     expect(pushState).toHaveBeenCalledWith({}, "", "/docs/fences");
   });
+
+  it("reloads browser history traversal while document navigation is retained", async () => {
+    const { reload, removeWindowListener } = await installBrowserGlobals();
+    const { retainDocumentNavigation } = await import("../src/browser/navigation");
+
+    const release = retainDocumentNavigation();
+
+    history.back();
+    expect(reload).toHaveBeenCalledOnce();
+
+    release();
+    history.forward();
+    expect(reload).toHaveBeenCalledOnce();
+    expect(removeWindowListener).toHaveBeenCalledWith("popstate", expect.any(Function), true);
+  });
+
+  it("shares the navigation lease across bridge module instances", async () => {
+    const { pushState } = await installBrowserGlobals();
+    const firstBridge = await import("../src/browser/navigation");
+    const releaseFirst = firstBridge.retainDocumentNavigation();
+
+    vi.resetModules();
+    const secondBridge = await import("../src/browser/navigation");
+    const releaseSecond = secondBridge.retainDocumentNavigation();
+
+    releaseFirst();
+    history.pushState({}, "", "/docs/fences");
+    expect(pushState).not.toHaveBeenCalled();
+
+    releaseSecond();
+    history.pushState({}, "", "/docs/fences");
+    expect(pushState).toHaveBeenCalledWith({}, "", "/docs/fences");
+  });
 });
 
 class TestElement {
@@ -90,10 +123,18 @@ class TestAnchor extends TestElement {
 
 async function installBrowserGlobals() {
   let click: ((event: MouseEvent) => void) | undefined;
+  let popstate: ((event: PopStateEvent) => void) | undefined;
   const assign = vi.fn();
+  const reload = vi.fn();
+  const removeWindowListener = vi.fn((event: string, listener: EventListener) => {
+    if (event === "popstate" && popstate === listener) popstate = undefined;
+  });
   const replace = vi.fn();
   const pushState = vi.fn();
   const replaceState = vi.fn();
+  const traverseHistory = () => {
+    popstate?.({ stopImmediatePropagation: vi.fn() } as unknown as PopStateEvent);
+  };
 
   vi.stubGlobal("Element", TestElement);
   vi.stubGlobal("HTMLAnchorElement", TestAnchor);
@@ -105,15 +146,22 @@ async function installBrowserGlobals() {
     removeEventListener: vi.fn(),
   });
   vi.stubGlobal("window", {
+    addEventListener: vi.fn((event: string, listener: EventListener) => {
+      if (event === "popstate") popstate = listener as (event: PopStateEvent) => void;
+    }),
     location: {
       assign,
       origin: "http://example.test",
       pathname: "/docs/",
+      reload,
       replace,
       search: "",
     },
+    removeEventListener: removeWindowListener,
   });
   vi.stubGlobal("history", {
+    back: vi.fn(traverseHistory),
+    forward: vi.fn(traverseHistory),
     pushState,
     replaceState,
   });
@@ -125,6 +173,8 @@ async function installBrowserGlobals() {
       click(event);
     },
     pushState,
+    reload,
+    removeWindowListener,
     replace,
     replaceState,
   };

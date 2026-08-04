@@ -1,16 +1,31 @@
 export type MarimoThemeMode = "auto" | "light" | "dark";
 export type ResolvedMarimoTheme = "light" | "dark";
+export type MarimoThemeResolver = (host: HTMLElement) => ResolvedMarimoTheme | undefined;
 
 const themeDataAttributes = ["data-theme", "data-color-mode", "data-mode"];
 
-export const themeAttributeFilter = ["class", "style", ...themeDataAttributes];
+export const themeAttributeFilter = [
+  "class",
+  "style",
+  "data-marimo-theme-mode",
+  ...themeDataAttributes,
+];
 
 export function themeModeFromHost(host: HTMLElement): MarimoThemeMode {
   return normalizeThemeMode(host.getAttribute("data-marimo-theme-mode")) ?? "auto";
 }
 
-export function resolveTheme(themeMode: MarimoThemeMode, host?: HTMLElement): ResolvedMarimoTheme {
-  return themeMode === "auto" ? currentTheme(host) : themeMode;
+export function resolveTheme(
+  themeMode: MarimoThemeMode,
+  host?: HTMLElement,
+  themeResolver?: MarimoThemeResolver,
+): ResolvedMarimoTheme {
+  if (themeMode !== "auto") return themeMode;
+  if (host) {
+    const resolved = themeResolver?.(host);
+    if (resolved) return resolved;
+  }
+  return currentTheme(host);
 }
 
 function currentTheme(host: HTMLElement | undefined): ResolvedMarimoTheme {

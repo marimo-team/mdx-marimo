@@ -1,6 +1,4 @@
-export { ensureAssets } from "./assets";
 export { mountMarimoIsland } from "./island";
-export { applyMarimoTheme, installMarimoThemeBridge } from "./theme";
+export { installMarimoIslandStyles } from "./styles";
 export type { MountMarimoIslandOptions } from "./island";
-export type { MarimoThemeMode } from "./theme";
-export type { MarimoRuntimeAssets, MarimoPageRuntime } from "../protocol";
+export type { MarimoThemeMode, MarimoThemeResolver } from "./theme";
