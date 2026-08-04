@@ -47,6 +47,17 @@ Astro, Vue, and other browser entries can register the custom element directly:
 import "@marimo-team/mdx-marimo/element/auto";
 ```
 
+Publishing adapters can use the host-neutral page protocol and browser bridge
+from the same package:
+
+```ts
+import { mountMarimoIsland } from "@marimo-team/mdx-marimo/bridge/browser";
+import {
+  projectPageCellPayloads,
+  type CompiledMarimoPage,
+} from "@marimo-team/mdx-marimo/bridge/protocol";
+```
+
 ## Write marimo cells
 
 ````mdx

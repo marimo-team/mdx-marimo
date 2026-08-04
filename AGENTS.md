@@ -1,82 +1,105 @@
 # AGENTS.md
 
-Guidance for coding agents working in this pnpm and Vite+ workspace for reactive marimo islands in MDX hosts.
+Guidance for coding agents working in this pnpm and Vite+ workspace for
+reactive marimo islands in publishing hosts.
 
-Read [`development_docs/README.md`](./development_docs/README.md) for the
-contributor documentation map. Read
-[`development_docs/architecture.md`](./development_docs/architecture.md) before
-changing package boundaries, protocol values, compilation, or browser mounting.
+Read [`development_docs/architecture.md`](./development_docs/architecture.md)
+before changing package boundaries, protocol records, compilation, or browser
+mounting. The remaining contributor docs are indexed in
+[`development_docs/README.md`](./development_docs/README.md).
 
-## Setup
+## Commands
 
 Use Node 24 from [`.node-version`](./.node-version) and pnpm 11.10.0 from the
-`packageManager` field in [`package.json`](./package.json). Enable Corepack so
-the repository selects its pinned pnpm release, then install from the workspace
-root:
+`packageManager` field in [`package.json`](./package.json).
 
 ```bash
 corepack enable
 pnpm install --frozen-lockfile
 ```
 
-## Commands
+| Purpose       | Command      | Expected result                           |
+| ------------- | ------------ | ----------------------------------------- |
+| Static checks | `pnpm check` | Formatting, linting, and type checks pass |
+| Tests         | `pnpm test`  | Bridge and MDX package tests pass         |
+| Build         | `pnpm build` | Packages, docs, and examples build        |
+| Full gate     | `pnpm ready` | Checks, tests, and builds pass            |
 
-| Purpose       | Command                          | Expected result                           |
-| ------------- | -------------------------------- | ----------------------------------------- |
-| Install       | `pnpm install --frozen-lockfile` | dependencies install successfully         |
-| Static checks | `pnpm check`                     | formatting, linting, and type checks pass |
-| Tests         | `pnpm test`                      | both package suites pass                  |
-| Build         | `pnpm build`                     | packages, docs, and every example build   |
-| Full gate     | `pnpm ready`                     | checks, tests, and builds pass            |
+Build one package and its dependencies with:
 
-Vite+ (`vp`) owns formatting, linting, package builds, tests, and workspace task scheduling. Each package keeps the type checker that understands its generated files and framework conventions. Build one package and its dependencies with `pnpm exec vp run -t <package>#build`.
+```bash
+pnpm exec vp run -t <package>#build
+```
 
-Keep shared build tools at the workspace root. The library packages are also linked into host workspaces for integration testing, so package-local tool dependencies would become part of each host's install policy.
+## Package boundaries
+
+- `packages/islands-bridge` owns the page protocol and host-neutral browser
+  bridge. It covers payload projection, DOM mounting, runtime assets, app
+  retention, navigation, themes, custom elements, and shared styles.
+- `packages/islands-compiler` owns host-neutral page compilation, cell
+  planning, build-time evaluation, compiled metadata, and runtime asset
+  extraction.
+- `packages/mdx-marimo` owns MDX authoring and integration. It covers fence
+  parsing, mdast collection, page identity, compiler transport, MDX projection,
+  React and VitePress adapters, and published compiler and bridge artifacts.
+- `@marimo-team/islands` owns the inner browser executor, worker, Pyodide
+  environment, and reactive evaluation loaded through marimo-generated assets.
+- `docs` contains public package documentation. `apps/docs` renders it.
+  `examples` contains host integration fixtures.
+
+The ownership direction is:
+
+```text
+islands-bridge <- mdx-marimo <- docs and host integrations
+```
+
+`packages/islands-bridge` is private. Its public contracts ship through
+`@marimo-team/mdx-marimo/bridge/*`. Keep host syntax, host tree nodes, framework
+hooks, element names, and host theme detection in adapters.
+
+## Package invariants
+
+- Keep exported subpaths explicit in each package `exports` map.
+- Keep bridge implementation in `packages/islands-bridge` and publish it through
+  `@marimo-team/mdx-marimo/bridge/*`.
+- Keep the canonical Python compiler in `packages/islands-compiler/compiler.py`.
+  Package it for MDX and vendor the same source into Python host adapters.
+- Use extensionless relative imports in TypeScript source. The workspace uses
+  `moduleResolution: "Bundler"`.
+- Keep `@marimo-team/mdx-marimo/element/auto` self-contained with no bare
+  workspace imports.
+- Compile every source document as one request and one marimo app. Preserve one
+  compiled result and one projected position per authored cell. Keep shared app
+  assets at page level.
+- Preserve stable app identity for the same document source, including builds
+  that use temporary MDX filenames.
+- Copy `packages/islands-compiler/compiler.py` to `dist/node/compiler.py`
+  during the package build.
+- Keep React as an optional peer dependency of the React adapter.
+- Update `protocolVersion`, compilers, projection, browser consumers, and tests
+  together when a protocol record changes.
 
 ## Documentation
 
-- `docs` is the published documentation source for package users. Keep installation, host configuration, authoring, public APIs, styling, and examples there.
-- `apps/docs` is the Fumadocs renderer. Keep site routes, components, styles, and source configuration there.
-- `development_docs` is the contributor surface. Keep repository architecture, internal pipeline details, build mechanics, invariants, and validation procedures there.
-- `packages/mdx-marimo/README.md` ships to npm. Its examples and explanations must work for consumers of the installed package.
-
-## Architecture
-
-- `packages/islands-bridge` defines the outer page protocol and browser bridge. It owns page and cell payload types, asset loading, app retention, navigation, theme bridging, custom-element creation, and shared styles.
-- `@marimo-team/islands` owns the inner runtime payload and reactive browser executor loaded through the compiled page assets.
-- `packages/mdx-marimo` adapts MDX authoring and host lifecycles. It owns fence parsing, mdast collection, page identity, compiler transport, MDX projection, and the React hydration adapter.
-- A page is collected into one `MarimoPageRequest`, compiled into one `CompiledMarimoPage`, projected into host nodes, and mounted as one reactive marimo app.
-- `docs` documents the public package. `apps/docs` renders the static documentation site. `examples/*` are integration fixtures for the supported host frameworks.
-- The Python compiler script is packaged beside the Node entry that invokes it. `src/node/compile-page.py` must become `dist/node/compile-page.py`.
-
-## Dependency Rule
-
-Dependencies point from hosts toward the shared runtime:
-
-```text
-islands-bridge <- mdx-marimo <- docs and examples
-```
-
-`islands-bridge` contains the host-neutral publishing contract. `mdx-marimo` depends on that contract and adds MDX and React integration. Host fixtures belong in `apps/docs` or `examples`.
-
-Workspace packages declare these relationships with `workspace:*`. `vp run -r build` uses that graph to build dependencies before consumers. Keep dependency scheduling out of package build scripts.
-
-## Package Contracts
-
-- Keep exported subpaths explicit in each package's `exports` map.
-- `@marimo-team/mdx-marimo/element/auto` is a self-contained browser module with no bare package imports.
-- Page compilation preserves one output entry per authored cell and keeps shared assets at page level.
-- App identity is stable for the same document source, including builds that use temporary MDX filenames.
-- `styles.css` is the public styling entry. Shared tokens and selectors remain owned by `islands-bridge`.
-- React stays an optional peer dependency for the React hydration entry.
+- `docs` covers installation, host configuration, authoring, public APIs,
+  styling, and examples.
+- `apps/docs` owns documentation routes, components, styles, and source
+  configuration.
+- `development_docs` covers architecture, build mechanics, validation, and
+  releases.
+- `packages/mdx-marimo/README.md` ships to npm. Its examples must work from an
+  installed package.
 
 ## Validation
 
-Changes to package boundaries require all of these checks:
+Run `pnpm ready` for every package or framework boundary change. Also inspect
+`pnpm pack:mdx --dry-run --json` when changing exports, build entries, copied
+files, or package manifests.
 
-1. Run `pnpm ready`.
-2. Inspect `pnpm pack:mdx --dry-run --json`.
-3. Verify the docs and every example in a browser when runtime, styling, packaging, or host integration changes.
-4. Verify the Marimo Cloud blog integration when changing exports, browser mounting, MDX projection, or workspace packaging.
+Use browser checks for runtime, styling, navigation, and host integration
+changes. Verify the Marimo Cloud blog integration when changing browser
+mounting, MDX projection, shared CSS, or package exports.
 
-Tests should assert public behavior, protocol shapes, generated package contents, and runtime boundaries. Use browser checks for visual appearance, progressive loading, navigation, and interaction. Comments should explain lifecycle constraints or invariants that the code does not make obvious.
+Tests should assert protocol shapes, public behavior, generated package
+contents, and runtime boundaries. Comments should explain lifecycle ordering,
+serialization constraints, generated artifacts, or external runtime behavior.

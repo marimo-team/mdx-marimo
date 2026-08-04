@@ -1,8 +1,8 @@
 # Validation
 
-Validate at the boundary affected by the change. Type checks cover package
-contracts. Browser checks cover progressive rendering, hydration, theme
-bridging, navigation, and responsive layout.
+Choose checks from the boundary changed. Type checks cover package contracts.
+Browser checks cover progressive rendering, hydration, theme changes,
+navigation, and responsive layout.
 
 ## Complete gate
 
@@ -10,21 +10,20 @@ bridging, navigation, and responsive layout.
 pnpm ready
 ```
 
-The command runs:
+`pnpm ready` runs:
 
-1. Vite+ formatting and type-aware linting
-2. package-specific TypeScript checks
-3. both package test suites
-4. both package builds
-5. the Fumadocs production build
-6. every framework example production build
+1. formatting, linting, and package type checks
+2. bridge and MDX package tests
+3. bridge and MDX package builds
+4. the Fumadocs production build
+5. every framework example production build
 
 Run the complete gate before handing off a change that crosses package or
 framework boundaries.
 
 ## Package tests
 
-`packages/islands-bridge/test` protects:
+`packages/islands-bridge/test` covers:
 
 - protocol guards and payload construction
 - custom-element mounting
@@ -32,7 +31,7 @@ framework boundaries.
 - theme detection and propagation
 - public styling and package metadata
 
-`packages/mdx-marimo/test` protects:
+`packages/mdx-marimo/test` covers:
 
 - fence and option parsing
 - page collection and MDX projection
@@ -55,25 +54,23 @@ exports, or package manifests:
 pnpm pack:mdx --dry-run --json
 ```
 
-The root pack script runs the `mdx-marimo` `prepack` build. pnpm rewrites the
-bridge workspace range in the published manifest and includes the bridge files
-declared by `bundleDependencies`.
+The root pack script runs the `mdx-marimo` `prepack` build. The package contains
+the bridge implementation under `dist/bridge`.
 
 Confirm these artifacts:
 
 - every path in the `mdx-marimo` `exports` map has a corresponding JavaScript or CSS file
 - every typed JavaScript subpath has a declaration file
-- the bundled bridge includes its shared styling files
-- `mdx-marimo` includes `dist/node/compile-page.py`
+- the bridge exports include their JavaScript, declarations, and shared styling
+- `mdx-marimo` includes `dist/node/compiler.py`
 - `mdx-marimo/element/auto` has no bare `@marimo-team/*` imports
-- the `mdx-marimo` tarball installs in a fresh consumer project and resolves its bundled bridge
+- the published manifest has no runtime dependency on the private bridge package
+- the `mdx-marimo` tarball installs in a fresh consumer project and imports every bridge subpath
 
-The release tarball includes the versioned bridge dependency. A fresh consumer
-install must resolve the bridge from that tarball and import every public
-`mdx-marimo` JavaScript subpath.
-
-When changing Vite+ task outputs, remove local package `dist` directories and
-run a targeted build to confirm the task recreates the complete package.
+`pnpm release:check` installs the tarball in a temporary consumer and imports
+every public JavaScript subpath. When changing Vite+ task outputs, remove local
+package `dist` directories and run a targeted build to confirm the task
+recreates the complete package.
 
 ## Browser matrix
 
@@ -101,11 +98,11 @@ Progressive rendering requires two observations:
 2. The hydrated islands reach `idle`, share one app ID for the page, and remain
    interactive.
 
-## Marimo Cloud integration
+## Marimo Cloud
 
-The marimo-cloud web app links both packages as workspace members. Changes to
-package manifests, exports, the React runtime, the MDX projection, or shared CSS
-must also pass in `/Users/petergy/Projects/opensource/marimo-team/marimo-cloud`.
+The marimo-cloud web app links the workspace packages during development.
+Changes to package manifests, exports, the React runtime, MDX projection, or
+shared CSS must also pass in a marimo-cloud checkout.
 
 At minimum:
 
@@ -127,5 +124,5 @@ theme, dark theme, and mobile layout with a browser.
 | MDX collection or projection     | MDX tests, docs build, all framework builds                       |
 | Browser assets or custom element | browser bridge tests, all browser examples, marimo-cloud          |
 | Theme or shared CSS              | light and dark browser checks across all hosts and marimo-cloud   |
-| Vite+ config or package exports  | `pnpm ready`, clean package builds, both dry-run packs            |
+| Vite+ config or package exports  | `pnpm ready`, clean package builds, package dry-run pack          |
 | Framework adapter                | that framework's build, desktop browser flow, mobile dark flow    |

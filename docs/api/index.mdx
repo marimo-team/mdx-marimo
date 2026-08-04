@@ -6,14 +6,18 @@ description: Configure MDX compilation, cell authoring, browser hydration, and i
 mdx-marimo connects an MDX compiler to marimo's page compiler, then registers
 the emitted islands through its browser runtime.
 
-| Package entry                        | Contract                                                 |
-| ------------------------------------ | -------------------------------------------------------- |
-| `@marimo-team/mdx-marimo/remark`     | Collect and compile marimo fences during the site build. |
-| `@marimo-team/mdx-marimo/react`      | Register islands or mount protocol payloads in React.    |
-| `@marimo-team/mdx-marimo/element`    | Register the marimo custom element directly.             |
-| `@marimo-team/mdx-marimo/node`       | Compile a `MarimoPageRequest` from Node.js.              |
-| `@marimo-team/mdx-marimo/vitepress`  | Compile marimo fences in VitePress Markdown pages.       |
-| `@marimo-team/mdx-marimo/styles.css` | Load the island layout and theme property contract.      |
+| Package entry                               | Contract                                                 |
+| ------------------------------------------- | -------------------------------------------------------- |
+| `@marimo-team/mdx-marimo/remark`            | Collect and compile marimo fences during the site build. |
+| `@marimo-team/mdx-marimo/react`             | Register islands or mount protocol payloads in React.    |
+| `@marimo-team/mdx-marimo/element`           | Register the MDX marimo custom element directly.         |
+| `@marimo-team/mdx-marimo/node`              | Compile a `MarimoPageRequest` from Node.js.              |
+| `@marimo-team/mdx-marimo/vitepress`         | Compile marimo fences in VitePress Markdown pages.       |
+| `@marimo-team/mdx-marimo/bridge/protocol`   | Share page requests and compiled page payloads.          |
+| `@marimo-team/mdx-marimo/bridge/browser`    | Mount cells, load assets, and synchronize host themes.   |
+| `@marimo-team/mdx-marimo/bridge/element`    | Register a host-defined marimo island element.           |
+| `@marimo-team/mdx-marimo/bridge/styles.css` | Load the shared island stylesheet.                       |
+| `@marimo-team/mdx-marimo/styles.css`        | Alias for the shared stylesheet in MDX host setup.       |
 
 ## Pages
 

@@ -1,9 +1,7 @@
 # Development
 
-Run repository tooling from the workspace root. The root owns Vite+ and
-TypeScript so the library packages can also be linked into another pnpm
-workspace without adding this repository's build tools to the host's install
-policy.
+Run repository commands from the workspace root. The root owns Vite+,
+TypeScript, and shared build tools.
 
 ## Setup
 
@@ -13,134 +11,117 @@ pnpm install --frozen-lockfile
 ```
 
 Use Node 24 from [`.node-version`](../.node-version) and the pnpm version pinned
-in [`package.json`](../package.json). The root package accepts Node 22.18 or
-newer, while contributor workflows and CI use Node 24. `@manzt/uv` supplies the
-`uv` command used by the default page compiler when a host-local `uv`
-executable is unavailable.
+in [`package.json`](../package.json). The workspace accepts Node 22.18 and newer.
+Contributor workflows and CI use Node 24.
+
+`@manzt/uv` supplies the default `uv` command when a compiler call has no
+host-local executable.
 
 ## Commands
 
 | Task                               | Command             |
 | ---------------------------------- | ------------------- |
-| Format and lint check              | `pnpm check`        |
-| Unit and integration tests         | `pnpm test`         |
-| Build packages, docs, and examples | `pnpm build`        |
+| Format, lint, and type checks      | `pnpm check`        |
+| Tests                              | `pnpm test`         |
+| Packages, docs, and example builds | `pnpm build`        |
 | Complete local gate                | `pnpm ready`        |
 | Apply formatting                   | `pnpm format`       |
 | Check formatting                   | `pnpm format:check` |
-| Run type checks                    | `pnpm typecheck`    |
+| Type checks                        | `pnpm typecheck`    |
 
-Use Vite+ to target one package and its workspace dependencies:
+Build one package and its dependencies with Vite+:
 
 ```bash
 pnpm exec vp run -t @marimo-team/mdx-marimo#build
 ```
 
-Use a package filter for a host app:
+Start one host package with a pnpm filter:
 
 ```bash
 pnpm --filter @marimo-team/mdx-marimo-example-react dev
 ```
 
-For a first local integration target, start the documentation app:
+Start the documentation app:
 
 ```bash
 pnpm --filter @marimo-team/mdx-marimo-docs dev
 ```
 
-Open <http://127.0.0.1:4100>. The `predev` script builds the local packages
-before Vite starts.
+Open <http://127.0.0.1:4100>. The app `predev` script builds the local packages
+before starting Vite.
 
-## Task graph
-
-The workspace dependency direction is:
-
-```text
-islands-bridge <- mdx-marimo <- docs and examples
-```
+## Vite+ tasks
 
 [`packages/islands-bridge/vite.config.ts`](../packages/islands-bridge/vite.config.ts)
-defines its `build` and `typecheck` tasks.
+and
 [`packages/mdx-marimo/vite.config.ts`](../packages/mdx-marimo/vite.config.ts)
-defines the same tasks and declares that its build depends on dependency build
-tasks. `vp run -r build` schedules the resulting graph.
+define package build and type-check tasks. `vp run -r build` schedules workspace
+builds and respects declared package dependencies.
 
-Keep build ordering in the Vite+ graph. Package scripts should expose native
-framework commands or true package lifecycle hooks, not repeat workspace
-dependency filters.
+Keep workspace scheduling in Vite+. Package scripts should expose a package
+lifecycle command or native framework command.
 
 ## Package outputs
 
-### Bridge workspace package
+### `packages/islands-bridge`
 
-`vp pack` emits ESM and declarations for:
+The private bridge build emits ESM and declarations for:
 
 - the package root
 - `protocol`
 - `browser`
 - `element`
 
-It also copies `styles.css` and the CSS files under `src/styling` into `dist`.
-These outputs are bundled into the `@marimo-team/mdx-marimo` npm tarball.
+It also emits `styles.css`. Consumers install the bridge through
+`@marimo-team/mdx-marimo`.
 
 ### `@marimo-team/mdx-marimo`
 
-The main package build emits ESM and declarations for:
+The published package emits ESM and declarations for:
 
 - the package root
 - `remark`
 - `element`
 - `node`
 - `react`
+- `vitepress`
+- `bridge/protocol`
+- `bridge/browser`
+- `bridge/element`
 
-A second browser build bundles `element/auto` with `islands-bridge`, producing
-a self-contained custom-element registration entry. The build copies
-`src/node/compile-page.py` beside `dist/node/index.js` and copies the public
-stylesheet to `dist/styles.css`. The npm tarball includes the versioned bridge
-workspace dependency and its built files.
+The build also:
 
-Update the package `exports` map and the Vite+ entries together when adding or
+- bundles `element/auto` as a self-contained browser entry
+- emits self-contained declarations for the bridge entries
+- copies `packages/islands-compiler/compiler.py` to `dist/node/compiler.py`
+- exposes one generated stylesheet through `styles.css` and `bridge/styles.css`
+
+Update the package `exports` map and Vite+ entries together when adding or
 renaming a public subpath.
 
-## Documentation surfaces
+## Host fixtures
 
-[`docs`](../docs) is the published package documentation. It covers
-installation, framework configuration, authoring, public APIs, styling, and
-runnable examples.
+Each example exercises a framework integration:
 
-[`apps/docs`](../apps/docs) is the Fumadocs renderer. Its source configuration,
-routes, components, and styles turn the repository documentation into the
-static site.
-
-[`development_docs`](.) records repository architecture and maintenance
-contracts. Put package internals, build graph behavior, contributor workflows,
-and test strategy here.
-
-Package READMEs ship to npm. Keep their examples executable from an installed
-package and keep repository maintenance instructions in this directory.
-
-## Examples
-
-Each example is an integration fixture for a native host path:
-
-| Package           | Integration under test                         |
-| ----------------- | ---------------------------------------------- |
-| `with-react`      | Vite, React, and `@mdx-js/react`               |
-| `with-vue`        | Vite, Vue, and `@mdx-js/vue`                   |
-| `with-astro`      | Astro's MDX compiler and client script         |
-| `with-next`       | Next.js MDX and a React runtime boundary       |
-| `with-docusaurus` | Docusaurus docs navigation and theme lifecycle |
-| `with-nuxt`       | Nuxt content, Vue MDX, and client registration |
+| Directory         | Integration                                               |
+| ----------------- | --------------------------------------------------------- |
+| `with-react`      | Vite, React, and `@mdx-js/react`                          |
+| `with-vue`        | Vite, Vue, and `@mdx-js/vue`                              |
+| `with-astro`      | Astro MDX and a client script                             |
+| `with-next`       | Next.js MDX and a React runtime boundary                  |
+| `with-docusaurus` | Docusaurus navigation and theme lifecycle                 |
+| `with-nuxt`       | Nuxt Content and client registration                      |
+| `with-vitepress`  | VitePress Markdown transformation and client registration |
 
 Shared fixture styling lives in [`examples/site.css`](../examples/site.css).
-Host-specific code should remain limited to compiler registration, runtime
-registration, and host theme mapping.
+Host-specific code covers compiler registration, browser registration, and
+theme mapping.
 
 ## Generated files
 
-Build output and framework caches are ignored. Change source files and let the
-workspace commands regenerate `dist`, `.output`, `.next`, `.nuxt`, `.astro`,
-`.docusaurus`, and example build directories.
+Change source files and run the workspace build to regenerate `dist`, `.output`,
+`.next`, `.nuxt`, `.astro`, `.docusaurus`, and example build directories.
 
-The Python compiler is source. Its copied file under `dist/node` is a package
-artifact and should be validated through the package build and dry-run pack.
+The Python compiler under `packages/islands-compiler` is source. Its copy under
+`dist/node` is a package artifact checked by the package build and dry-run
+pack.

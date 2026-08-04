@@ -1,30 +1,34 @@
 # mdx-marimo
 
-Add reactive Python examples, visualizations, and controls to an MDX site.
-Visitors can use embedded controls or edit and rerun Python directly in the
-page.
+Publish reactive Python, SQL, and Markdown cells inside documentation,
+tutorials, and articles. Write cells alongside ordinary content while the host
+keeps control of the surrounding layout, components, navigation, and theme.
 
-Marimo cells can appear anywhere in a page and share one reactive namespace.
-The MDX host keeps control of the surrounding layout, components, navigation,
-and theme.
+mdx-marimo renders the initial output at build time, then hydrates the page with
+Pyodide as one reactive notebook. Visitors can use controls, edit Python, and
+rerun dependent cells in the browser.
 
-## Quick start
+## Get started
 
 ```bash
 pnpm add @marimo-team/mdx-marimo
 ```
 
-Add `remarkMarimo` to the host's MDX compiler:
+Add `remarkMarimo` to the host's MDX compiler. This Fumadocs configuration is
+one example:
 
 ```ts
+import { defineConfig } from "fumadocs-mdx/config";
 import { remarkMarimo } from "@marimo-team/mdx-marimo/remark";
 
-export default {
-  remarkPlugins: [remarkMarimo],
-};
+export default defineConfig({
+  mdxOptions: {
+    remarkPlugins: [remarkMarimo],
+  },
+});
 ```
 
-Import the stylesheet and register the browser runtime once:
+Import the stylesheet and mount the browser runtime once:
 
 ```tsx
 import { MarimoIslandRuntime } from "@marimo-team/mdx-marimo/react";
@@ -35,13 +39,13 @@ export function MdxRuntime() {
 }
 ```
 
-Add marimo cells to an MDX page:
+Then write marimo cells between ordinary MDX:
 
 ````mdx
 ```python marimo editor=true
 import marimo as mo
 
-slider = mo.ui.slider(1, 10, label="items")
+slider = mo.ui.slider(1, 10)
 slider
 ```
 
@@ -52,12 +56,11 @@ mo.md(f"The slider is set to **{slider.value}**.")
 ```
 ````
 
-`editor=true` shows marimo's Python editor for the first cell. Visitors can
-change the source and click run. The site build includes the initial output,
-then Pyodide executes edits in the browser, renders the new result, and reruns
-dependent cells through the shared reactive notebook.
+Every marimo fence on the page shares the same reactive notebook.
+`editor=true` lets visitors edit and rerun the first cell, and the second cell
+updates with it.
 
-## Frameworks
+## Frameworks and examples
 
 | Host           | Example                                                  |
 | -------------- | -------------------------------------------------------- |
@@ -66,11 +69,11 @@ dependent cells through the shared reactive notebook.
 | Next.js        | [`examples/with-next`](./examples/with-next)             |
 | Nuxt           | [`examples/with-nuxt`](./examples/with-nuxt)             |
 | React and Vite | [`examples/with-react`](./examples/with-react)           |
+| VitePress      | [`examples/with-vitepress`](./examples/with-vitepress)   |
 | Vue and Vite   | [`examples/with-vue`](./examples/with-vue)               |
 
-The [documentation](./docs) covers framework setup, authoring
-options, styling, public APIs, and the full marimo tutorial notebooks rendered
-through MDX.
+See the [documentation](./docs) for framework setup, authoring options, styling,
+and public APIs. Browse the [examples](./examples) for complete integrations.
 
 ## Development
 
