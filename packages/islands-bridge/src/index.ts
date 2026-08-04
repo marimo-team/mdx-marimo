@@ -1,11 +1,16 @@
 export {
   MARIMO_PAGE_PROTOCOL_VERSION,
-  pageCellPayload,
   isCompiledMarimoPage,
   isMarimoPageCellPayload,
+  isMarimoPageCellReferencePayload,
+  encodePageCellPayload,
+  pageCellPayload,
+  pageCellReferencePayload,
+  projectPageCellPayloads,
 } from "./protocol";
 export type {
   CompiledMarimoCell,
+  CompiledMarimoOutput,
   CompiledMarimoPage,
   JsonPrimitive,
   JsonRecord,
@@ -15,6 +20,10 @@ export type {
   MarimoCellRequest,
   MarimoDiagnostic,
   MarimoPageCellPayload,
+  MarimoPageCell,
+  MarimoPageCellReferencePayload,
+  MarimoPageSerializedCellPayload,
+  ProjectedMarimoPageCellPayload,
   MarimoLanguage,
   MarimoPageCompiler,
   MarimoPageRequest,

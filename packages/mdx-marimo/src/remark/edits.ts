@@ -1,9 +1,9 @@
 import type { RootContent } from "mdast";
 import {
-  pageCellPayload,
-  type CompiledMarimoCell,
+  projectPageCellPayloads,
   type CompiledMarimoPage,
   type MarimoDiagnostic,
+  type MarimoPageSerializedCellPayload,
 } from "@marimo-team/mdx-marimo/bridge/protocol";
 import { marimoIslandNode } from "../mdx/nodes";
 
@@ -30,14 +30,19 @@ export function applyTreeEdits(
   outputMode: MarimoTreeEditOutput,
 ): boolean {
   let didReplace = false;
+  const payloads = projectPageCellPayloads(result);
 
   for (const edit of edits.slice().reverse()) {
     if (edit.type === "remove") {
       edit.parent.children.splice(edit.index, 1);
       continue;
     }
-    const cell = result.cells[edit.outputIndex]!;
-    const node = marimoIslandNode(islandNodeOptions(outputMode, result, cell));
+    const payload = payloads[edit.outputIndex];
+    if (!payload) {
+      edit.parent.children.splice(edit.index, 1);
+      continue;
+    }
+    const node = marimoIslandNode(islandNodeOptions(outputMode, payload));
     edit.parent.children.splice(edit.index, 1, node);
     didReplace = true;
   }
@@ -47,13 +52,12 @@ export function applyTreeEdits(
 
 function islandNodeOptions(
   outputMode: MarimoTreeEditOutput,
-  result: CompiledMarimoPage,
-  cell: CompiledMarimoCell,
+  payload: MarimoPageSerializedCellPayload,
 ): Parameters<typeof marimoIslandNode>[0] {
   return {
     ...(outputMode.elementName === undefined ? {} : { elementName: outputMode.elementName }),
     ...(outputMode.theme === undefined ? {} : { theme: outputMode.theme }),
-    payload: pageCellPayload(result, cell),
+    payload,
   };
 }
 

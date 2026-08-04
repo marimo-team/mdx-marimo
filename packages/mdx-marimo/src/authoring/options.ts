@@ -1,5 +1,5 @@
 import type {
-  MarimoCellOptions,
+  MarimoCellOptionsPatch,
   MarimoDiagnostic,
   MarimoLanguage,
 } from "@marimo-team/mdx-marimo/bridge/protocol";
@@ -22,7 +22,7 @@ const stringKeys = new Set(["query", "engine", "name"]);
 const numberKeys = new Set(["column"]);
 
 export type ParsedFenceOptions = {
-  options: MarimoCellOptions;
+  options: MarimoCellOptionsPatch;
   diagnostics: MarimoDiagnostic[];
 };
 
@@ -73,35 +73,43 @@ export function parseFenceOptions(
 function normalizeCellOptions(
   language: MarimoLanguage,
   rawOptions: Record<string, string | boolean | number>,
-): MarimoCellOptions {
-  const include = readBoolean(rawOptions.include, true);
-  const echo = readBoolean(rawOptions.echo, false);
-  const output = readBoolean(rawOptions.output, true);
-  const error = readBoolean(rawOptions.error, true);
-  const editor = readBoolean(rawOptions.editor, false);
-  const evalEnabled = readBoolean(rawOptions.eval, true);
-  const disabled = readBoolean(rawOptions.disabled, false);
-  const unparsable = readBoolean(rawOptions.unparsable, false);
-  const hideCode = readBoolean(rawOptions["hide-code"], false);
-  const hideOutput = readBoolean(rawOptions["hide-output"], false);
-  const serverOutput = readBoolean(rawOptions["server-output"], true);
-  const options: MarimoCellOptions = {
+): MarimoCellOptionsPatch {
+  const render: NonNullable<MarimoCellOptionsPatch["render"]> = {};
+  const execution: NonNullable<MarimoCellOptionsPatch["execution"]> = {};
+  const marimo: NonNullable<MarimoCellOptionsPatch["marimo"]> = {};
+  const renderKeys = {
+    echo: "source",
+    output: "output",
+    include: "include",
+    editor: "editor",
+    error: "error",
+    "server-output": "serverOutput",
+  } as const;
+  for (const [source, target] of Object.entries(renderKeys)) {
+    if (source in rawOptions) {
+      render[target] = readBoolean(rawOptions[source]);
+    }
+  }
+  if (render.editor) render.source = true;
+  const hideCode = readBoolean(rawOptions["hide-code"]);
+  if (hideCode) {
+    render.source = false;
+    render.editor = false;
+  }
+  if (readBoolean(rawOptions["hide-output"])) render.output = false;
+  if ("eval" in rawOptions) execution.enabled = readBoolean(rawOptions.eval);
+  if ("disabled" in rawOptions) marimo.disabled = readBoolean(rawOptions.disabled);
+  if ("unparsable" in rawOptions) {
+    marimo.unparsable = readBoolean(rawOptions.unparsable);
+    if (marimo.unparsable && !hideCode) render.source = true;
+  }
+  if (marimo.disabled || marimo.unparsable) execution.enabled = false;
+
+  const options: MarimoCellOptionsPatch = {
     language,
-    render: {
-      source: include && (echo || editor || unparsable) && !hideCode,
-      output: include && output && !hideOutput,
-      include,
-      editor,
-      error,
-      serverOutput,
-    },
-    execution: {
-      enabled: evalEnabled && !disabled && !unparsable,
-    },
-    marimo: {
-      disabled,
-      unparsable,
-    },
+    ...(Object.keys(render).length > 0 ? { render } : {}),
+    ...(Object.keys(execution).length > 0 ? { execution } : {}),
+    ...(Object.keys(marimo).length > 0 ? { marimo } : {}),
   };
   const query = rawOptions.query;
   const engine = rawOptions.engine;
@@ -115,7 +123,7 @@ function normalizeCellOptions(
   return options;
 }
 
-function readBoolean(value: string | boolean | number | undefined, fallback: boolean): boolean {
+function readBoolean(value: string | boolean | number | undefined, fallback = false): boolean {
   if (value === undefined) return fallback;
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return value !== 0;

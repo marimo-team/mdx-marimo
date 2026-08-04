@@ -1,8 +1,9 @@
-import type {
-  CompiledMarimoPage,
-  MarimoCellOptions,
-  MarimoPageCompiler,
-  MarimoPageRequest,
+import {
+  MARIMO_PAGE_PROTOCOL_VERSION,
+  type CompiledMarimoPage,
+  type MarimoCellOptions,
+  type MarimoPageCompiler,
+  type MarimoPageRequest,
 } from "@marimo-team/mdx-marimo/bridge/protocol";
 import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vite-plus/test";
@@ -65,18 +66,21 @@ describe("marimoVitePress", () => {
         },
       ],
     });
-    expect(result).not.toContain("marimo-config");
-    expect(result).not.toContain("python marimo");
     expect(result).toContain('```python\nprint("ordinary")\n```');
     expect(result).toContain("> <marimo-mdx-island ");
 
     const payloads = Array.from(result.matchAll(/data-marimo-payload="([^"]+)"/g));
-    expect(payloads).toHaveLength(2);
+    expect(payloads).toHaveLength(3);
     const firstPayload = payloads[0]?.[1];
     expect(firstPayload).toBeDefined();
     expect(decodePayload(firstPayload!)).toMatchObject({
-      protocolVersion: 1,
+      protocolVersion: MARIMO_PAGE_PROTOCOL_VERSION,
       app: { id: "marimo-test", runtimeCellCount: 3 },
+      cell: { index: 0 },
+    });
+    expect(decodePayload(payloads[1]![1]!)).toMatchObject({
+      protocolVersion: MARIMO_PAGE_PROTOCOL_VERSION,
+      appId: "marimo-test",
       cell: { index: 1 },
     });
     expect(result).toContain('data-marimo-app-id="marimo-test"');
@@ -151,7 +155,7 @@ function compiler(inspect: (request: MarimoPageRequest) => void = () => {}): Mar
 
 function compiledPage(request: MarimoPageRequest): CompiledMarimoPage {
   return {
-    protocolVersion: 1,
+    protocolVersion: MARIMO_PAGE_PROTOCOL_VERSION,
     app: {
       id: "marimo-test",
       runtimeCellCount: request.cells.length,
@@ -160,9 +164,34 @@ function compiledPage(request: MarimoPageRequest): CompiledMarimoPage {
     cells: request.cells.map((cell) => ({
       index: cell.index,
       html: cell.options.render?.output === false ? "" : `<p>cell ${cell.index}</p>`,
-      options: cell.options as MarimoCellOptions,
+      options: compiledOptions(cell.options),
+      output: null,
     })),
     diagnostics: [],
+  };
+}
+
+function compiledOptions(patch: MarimoPageRequest["cells"][number]["options"]): MarimoCellOptions {
+  return {
+    language: patch.language ?? "python",
+    render: {
+      source: false,
+      output: true,
+      include: true,
+      editor: false,
+      error: true,
+      serverOutput: true,
+      ...patch.render,
+    },
+    execution: { enabled: true, ...patch.execution },
+    marimo: {
+      disabled: false,
+      unparsable: false,
+      ...patch.marimo,
+    },
+    ...(patch.sql ? { sql: patch.sql } : {}),
+    ...(patch.name === undefined ? {} : { name: patch.name }),
+    ...(patch.column === undefined ? {} : { column: patch.column }),
   };
 }
 

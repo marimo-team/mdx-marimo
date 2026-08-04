@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import {
@@ -14,7 +15,14 @@ export type CompileMarimoPageOptions = UvOptions & {
   timeoutMs?: number;
 };
 
-const compilerScriptUrl = new URL("./compile-page.py", import.meta.url);
+const workspaceCompilerScriptUrl = new URL(
+  "../../../islands-compiler/compiler.py",
+  import.meta.url,
+);
+const packagedCompilerScriptUrl = new URL("./compiler.py", import.meta.url);
+const compilerScriptUrl = existsSync(workspaceCompilerScriptUrl)
+  ? workspaceCompilerScriptUrl
+  : packagedCompilerScriptUrl;
 
 export async function compileMarimoPage(
   request: MarimoPageRequest,

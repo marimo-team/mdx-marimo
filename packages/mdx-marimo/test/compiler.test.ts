@@ -59,7 +59,7 @@ function fakeUv(cwd: string): string {
 process.stdin.resume();
 process.stdin.on("end", () => {
   process.stdout.write(JSON.stringify({
-    protocolVersion: 1,
+    protocolVersion: 2,
     app: null,
     cells: [],
     diagnostics: [],

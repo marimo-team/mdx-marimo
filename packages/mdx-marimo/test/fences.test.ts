@@ -23,14 +23,8 @@ describe("marimo fence metadata", () => {
         language: "python",
         render: {
           source: false,
-          output: true,
-          include: true,
           editor: false,
-          error: true,
-          serverOutput: true,
         },
-        execution: { enabled: true },
-        marimo: { disabled: false, unparsable: false },
         column: 2,
       },
     });
@@ -42,15 +36,8 @@ describe("marimo fence metadata", () => {
       options: {
         language: "sql",
         render: {
-          source: false,
           output: false,
-          include: true,
-          editor: false,
-          error: true,
-          serverOutput: true,
         },
-        execution: { enabled: true },
-        marimo: { disabled: false, unparsable: false },
         sql: {
           outputName: "result",
           engine: "duckdb",
@@ -59,21 +46,56 @@ describe("marimo fence metadata", () => {
     });
   });
 
+  it.each(["sql", "markdown"] as const)(
+    "renders authored %s source when the editor is enabled",
+    (language) => {
+      expect(parseFenceOptions(language, "marimo editor=true")).toEqual({
+        diagnostics: [],
+        options: {
+          language,
+          render: {
+            source: true,
+            editor: true,
+          },
+        },
+      });
+    },
+  );
+
   it("preserves unparsable source and disables execution", () => {
     expect(parseFenceOptions("python", "marimo unparsable=true")).toEqual({
       diagnostics: [],
       options: {
         language: "python",
+        render: { source: true },
+        execution: { enabled: false },
+        marimo: { unparsable: true },
+      },
+    });
+  });
+
+  it("disables execution for disabled cells", () => {
+    expect(parseFenceOptions("python", "marimo eval=true disabled=true")).toEqual({
+      diagnostics: [],
+      options: {
+        language: "python",
+        execution: { enabled: false },
+        marimo: { disabled: true },
+      },
+    });
+  });
+
+  it("hides unparsable source when hide-code is set", () => {
+    expect(parseFenceOptions("python", "marimo unparsable=true hide-code=true")).toEqual({
+      diagnostics: [],
+      options: {
+        language: "python",
         render: {
-          source: true,
-          output: true,
-          include: true,
+          source: false,
           editor: false,
-          error: true,
-          serverOutput: true,
         },
         execution: { enabled: false },
-        marimo: { disabled: false, unparsable: true },
+        marimo: { unparsable: true },
       },
     });
   });

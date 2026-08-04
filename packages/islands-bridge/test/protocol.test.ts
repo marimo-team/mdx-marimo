@@ -1,83 +1,86 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   MARIMO_PAGE_PROTOCOL_VERSION,
+  encodePageCellPayload,
   isCompiledMarimoPage,
   isMarimoPageCellPayload,
+  isMarimoPageCellReferencePayload,
   pageCellPayload,
+  projectPageCellPayloads,
   type CompiledMarimoPage,
 } from "../src/protocol";
 
 describe("marimo page protocol", () => {
-  it("creates one mount payload from a page and authored cell", () => {
+  it("projects included cells with one app carrier", () => {
     const page = compiledPage();
+    page.cells.splice(1, 0, {
+      ...page.cells[0]!,
+      index: 1,
+      options: {
+        ...page.cells[0]!.options,
+        render: { ...page.cells[0]!.options.render, include: false },
+      },
+    });
+    page.cells.push({ ...page.cells[0]!, index: 2 });
 
+    const payloads = projectPageCellPayloads(page);
+
+    expect(payloads).toHaveLength(3);
+    expect(isMarimoPageCellPayload(payloads[0])).toBe(true);
+    expect(payloads[0]).toMatchObject({ app: { id: "marimo-test" }, cell: { index: 0 } });
+    expect(payloads[1]).toBeNull();
+    expect(isMarimoPageCellReferencePayload(payloads[2])).toBe(true);
+    expect(payloads[2]).toMatchObject({ appId: "marimo-test", cell: { index: 2 } });
+    expect(payloads[0]?.cell).not.toHaveProperty("output");
+    expect(payloads[2]?.cell).not.toHaveProperty("output");
+  });
+
+  it("projects static cells as self-contained payloads", () => {
+    const page = { ...compiledPage(), app: null };
+    page.cells.push({ ...page.cells[0]!, index: 1 });
+
+    const payloads = projectPageCellPayloads(page);
+
+    expect(payloads).toMatchObject([
+      { app: null, cell: { index: 0 } },
+      { app: null, cell: { index: 1 } },
+    ]);
+  });
+
+  it("rejects compiled cells that do not match authored positions", () => {
+    const page = compiledPage();
+    page.cells[0] = { ...page.cells[0]!, index: 1 };
+
+    expect(() => projectPageCellPayloads(page)).toThrow("returned cell indices [1]; expected [0]");
+  });
+
+  it("encodes payloads as base64url JSON", () => {
+    const page = compiledPage();
+    const payload = pageCellPayload(page, {
+      ...page.cells[0]!,
+      html: "<p>Grüße 👋</p>",
+    });
+
+    const encoded = encodePageCellPayload(payload);
+    const base64 = encoded.replaceAll("-", "+").replaceAll("_", "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const decoded = JSON.parse(
+      new TextDecoder().decode(Uint8Array.from(atob(padded), (value) => value.charCodeAt(0))),
+    );
+
+    expect(decoded).toEqual(payload);
+    expect(encoded).toMatch(/^[A-Za-z0-9_-]+$/);
+  });
+
+  it("validates compiler and browser records at the v2 boundary", () => {
+    const page = compiledPage();
     const payload = pageCellPayload(page, page.cells[0]!);
 
+    expect(MARIMO_PAGE_PROTOCOL_VERSION).toBe(2);
     expect(isCompiledMarimoPage(page)).toBe(true);
     expect(isMarimoPageCellPayload(payload)).toBe(true);
-    expect(payload.app).toBe(page.app);
-    expect(payload.cell).toBe(page.cells[0]);
-  });
-
-  it("rejects payloads from another protocol version", () => {
-    expect(
-      isMarimoPageCellPayload({
-        protocolVersion: 2,
-        app: null,
-        cell: { index: 0, html: "", options: {} },
-      }),
-    ).toBe(false);
-  });
-
-  it("rejects malformed runtime assets", () => {
-    const page = compiledPage();
-    const app = page.app!;
-    const malformedAssets = [
-      { ...app.assets, moduleScripts: [null] },
-      { ...app.assets, links: [null] },
-      { ...app.assets, headTags: [null] },
-    ];
-
-    for (const assets of malformedAssets) {
-      const malformedApp = { ...app, assets };
-      expect(isCompiledMarimoPage({ ...page, app: malformedApp })).toBe(false);
-      expect(
-        isMarimoPageCellPayload({
-          protocolVersion: MARIMO_PAGE_PROTOCOL_VERSION,
-          app: malformedApp,
-          cell: page.cells[0],
-        }),
-      ).toBe(false);
-    }
-  });
-
-  it("rejects incomplete compiled cell options", () => {
-    const page = compiledPage();
-    const malformedCell = { ...page.cells[0], options: {} };
-
-    expect(isCompiledMarimoPage({ ...page, cells: [malformedCell] })).toBe(false);
-    expect(
-      isMarimoPageCellPayload({
-        protocolVersion: MARIMO_PAGE_PROTOCOL_VERSION,
-        app: page.app,
-        cell: malformedCell,
-      }),
-    ).toBe(false);
-  });
-
-  it("rejects malformed page and cell diagnostics", () => {
-    const page = compiledPage();
-    const malformedCell = { ...page.cells[0], diagnostics: [null] };
-
-    expect(isCompiledMarimoPage({ ...page, diagnostics: [null] })).toBe(false);
-    expect(isCompiledMarimoPage({ ...page, cells: [malformedCell] })).toBe(false);
-    expect(
-      isMarimoPageCellPayload({
-        protocolVersion: MARIMO_PAGE_PROTOCOL_VERSION,
-        app: page.app,
-        cell: malformedCell,
-      }),
-    ).toBe(false);
+    expect(isCompiledMarimoPage({ ...page, cells: [payload.cell] })).toBe(false);
+    expect(isMarimoPageCellPayload({ ...payload, protocolVersion: 1 })).toBe(false);
   });
 });
 
@@ -90,11 +93,8 @@ function compiledPage(): CompiledMarimoPage {
       assets: {
         links: [{ href: "/style.css", rel: "stylesheet" }],
         moduleScripts: ["/runtime.js"],
-        headTags: [{ tag: "meta", attrs: { name: "theme-color" }, text: "black" }],
-        version: "1.0.0",
       },
       notebookCode: "x = 1",
-      runtimePayload: { ready: true },
     },
     cells: [
       {
@@ -112,13 +112,14 @@ function compiledPage(): CompiledMarimoPage {
           },
           execution: { enabled: true },
           marimo: { disabled: false, unparsable: false },
-          sql: { engine: "duckdb", outputName: "result" },
-          name: "cell_name",
-          column: 0,
         },
-        diagnostics: [{ severity: "warning", message: "Example warning", cellIndex: 0, line: 1 }],
+        output: {
+          mimetype: "text/plain",
+          data: "1",
+          html: "<span>1</span>",
+        },
       },
     ],
-    diagnostics: [{ severity: "error", message: "Example error", cellIndex: 0, line: 1 }],
+    diagnostics: [],
   };
 }
