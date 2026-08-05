@@ -3,6 +3,68 @@
 @import "fumadocs-ui/css/preset.css";
 @import "@marimo-team/mdx-marimo/styles.css";
 
+:root {
+  --mdx-marimo-mdx: #fcb32c;
+  --mdx-marimo-marimo: #1d7363;
+  --mdx-marimo-accent: #fcb32c;
+  --mdx-marimo-accent-ink: #b85c00;
+  --color-fd-background: #ffffff;
+  --color-fd-foreground: #0f172a;
+  --color-fd-muted: #f1f5f9;
+  --color-fd-muted-foreground: #64748b;
+  --color-fd-popover: #ffffff;
+  --color-fd-popover-foreground: #0f172a;
+  --color-fd-card: #ffffff;
+  --color-fd-card-foreground: #0f172a;
+  --color-fd-border: #e2e8f0;
+  --color-fd-primary: var(--mdx-marimo-accent);
+  --color-fd-primary-foreground: #181c1a;
+  --color-fd-secondary: #f1f5f9;
+  --color-fd-secondary-foreground: #0f172a;
+  --color-fd-accent: color-mix(in srgb, var(--mdx-marimo-accent) 22%, white);
+  --color-fd-accent-foreground: var(--mdx-marimo-accent-ink);
+  --color-fd-ring: var(--mdx-marimo-accent-ink);
+  --color-fd-overlay: rgb(15 23 42 / 22%);
+}
+
+.dark {
+  --mdx-marimo-marimo: #cad996;
+  --mdx-marimo-accent: #fcb32c;
+  --mdx-marimo-accent-ink: #fcb32c;
+  --color-fd-background: #181c1a;
+  --color-fd-foreground: #eceeed;
+  --color-fd-muted: #202422;
+  --color-fd-muted-foreground: #aab2af;
+  --color-fd-popover: #252927;
+  --color-fd-popover-foreground: #eceeed;
+  --color-fd-card: #252927;
+  --color-fd-card-foreground: #eceeed;
+  --color-fd-border: #3b403e;
+  --color-fd-primary: var(--mdx-marimo-accent);
+  --color-fd-primary-foreground: #181c1a;
+  --color-fd-secondary: #252927;
+  --color-fd-secondary-foreground: #eceeed;
+  --color-fd-accent: color-mix(in srgb, var(--mdx-marimo-accent) 14%, var(--color-fd-background));
+  --color-fd-accent-foreground: var(--mdx-marimo-accent);
+  --color-fd-ring: var(--mdx-marimo-accent);
+  --color-fd-overlay: rgb(2 3 3 / 55%);
+}
+
+.dark #nd-sidebar {
+  --color-fd-muted: #202422;
+  --color-fd-muted-foreground: #aab2af;
+  --color-fd-secondary: #252927;
+}
+
+:root:not(.dark) a[data-active="true"],
+:root:not(.dark) .text-fd-primary {
+  color: var(--mdx-marimo-accent-ink);
+}
+
+:root:not(.dark) #nd-sidebar a[data-active="true"] {
+  background-color: color-mix(in srgb, var(--mdx-marimo-accent) 22%, white);
+}
+
 html {
   scrollbar-gutter: stable;
 }
@@ -21,7 +83,7 @@ body {
   --marimo-island-accent: var(--color-fd-primary);
   --marimo-island-accent-foreground: var(--color-fd-primary-foreground);
   --marimo-island-focus-ring: var(--color-fd-primary);
-  --marimo-island-code-background: var(--color-fd-secondary);
+  --marimo-island-code-background: var(--color-fd-card);
   --marimo-island-code-foreground: var(--color-fd-foreground);
   --marimo-island-error-background: color-mix(
     in srgb,
