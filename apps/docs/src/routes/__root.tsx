@@ -31,7 +31,6 @@ export const Route = createRootRoute({
       {
         rel: "icon",
         type: "image/svg+xml",
-        media: "(prefers-color-scheme: light)",
         href: withBasePath(brandAssets.mark.light.svg),
       },
       {
@@ -44,7 +43,6 @@ export const Route = createRootRoute({
         rel: "icon",
         type: "image/png",
         sizes: "1024x1024",
-        media: "(prefers-color-scheme: light)",
         href: withBasePath(brandAssets.mark.light.png),
       },
       {
