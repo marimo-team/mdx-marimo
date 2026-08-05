@@ -1,9 +1,10 @@
 # mdx-marimo
 
-Add reactive Python, SQL, and Markdown cells to MDX pages.
+Run marimo wherever MDX runs.
 
-All marimo cells on a page share one reactive namespace. Normal MDX can appear
-between cells, and the host keeps control of the page layout and theme.
+Compose reactive Python, SQL, and Markdown cells inside documentation,
+tutorials, and articles. Every marimo cell on a page shares one reactive
+namespace while the host keeps control of the surrounding MDX layout and theme.
 
 ## Install
 

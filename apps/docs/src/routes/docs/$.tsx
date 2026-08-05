@@ -2,6 +2,7 @@ import { createDocsLink, getMDXComponents } from "@/components/mdx";
 import { getPageDirectory, source } from "@/lib/source";
 import { staticFunctionMiddleware } from "@/lib/static-function-middleware";
 import { baseOptions } from "@/lib/layout.shared";
+import { createMetadata, createPageTitle, resolvePageUrl, siteDescription } from "@/lib/metadata";
 import { MarimoIslandRuntime } from "@marimo-team/mdx-marimo/react";
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
@@ -19,6 +20,18 @@ export const Route = createFileRoute("/docs/$")({
     await clientLoader.preload(data.path);
     return data;
   },
+  head: ({ loaderData }) => {
+    if (!loaderData) return {};
+
+    return {
+      meta: createMetadata({
+        title: createPageTitle(loaderData.title),
+        description: loaderData.description,
+        url: loaderData.url,
+      }),
+      links: [{ rel: "canonical", href: loaderData.url }],
+    };
+  },
 });
 
 const loadPage = createServerFn({
@@ -31,6 +44,9 @@ const loadPage = createServerFn({
     if (!page) throw notFound();
 
     return {
+      title: page.data.title,
+      description: page.data.description ?? siteDescription,
+      url: resolvePageUrl(page.url),
       directory: getPageDirectory(page.path),
       path: page.path,
       pageTree: await source.serializePageTree(source.getPageTree()),
