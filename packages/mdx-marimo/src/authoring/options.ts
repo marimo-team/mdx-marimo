@@ -113,7 +113,7 @@ function normalizeCellOptions(
   };
   const query = rawOptions.query;
   const engine = rawOptions.engine;
-  if (typeof query === "string" || typeof engine === "string") {
+  if (language === "sql" && (typeof query === "string" || typeof engine === "string")) {
     options.sql = {};
     if (typeof query === "string") options.sql.outputName = query;
     if (typeof engine === "string") options.sql.engine = engine;

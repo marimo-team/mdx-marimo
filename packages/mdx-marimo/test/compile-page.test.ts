@@ -381,6 +381,23 @@ describe("islands compiler", () => {
     expect(parsed.cells[0]?.options.execution.enabled).toBe(false);
   });
 
+  it("reports editor source visibility in effective options", () => {
+    const request = fixtureRequest();
+    request.metadata = {};
+    request.cells = [
+      {
+        index: 0,
+        source: "value = 1",
+        options: { language: "python", render: { editor: true } },
+      },
+    ];
+
+    const parsed = compilePage(request);
+
+    expect(parsed.cells[0]?.options.render.source).toBe(true);
+    expect(parsed.cells[0]?.options.render.editor).toBe(true);
+  });
+
   it("renders default-unparsable source unless the cell hides it", () => {
     const request = fixtureRequest();
     request.metadata = {};
