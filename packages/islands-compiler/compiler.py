@@ -187,6 +187,8 @@ def plan_cell(
     marimo_options = as_dict(options.get("marimo"))
     cell_render = as_dict(cell_options.get("render"))
     default_render = as_dict(defaults.get("render"))
+    if as_bool(render.get("editor")):
+        render["source"] = True
     if (
         not setup
         and as_bool(marimo_options.get("unparsable"))

@@ -45,6 +45,12 @@ describe("marimo fence metadata", () => {
     });
   });
 
+  it("scopes SQL options to SQL cells", () => {
+    expect(parseFenceOptions("python", 'marimo query="result" engine=duckdb').options).toEqual({
+      language: "python",
+    });
+  });
+
   it("renders authored source when the editor is enabled", () => {
     expect(parseFenceOptions("markdown", "marimo editor=true").options).toEqual({
       language: "markdown",
