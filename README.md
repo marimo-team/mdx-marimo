@@ -15,10 +15,9 @@
 
 <p align="center"><strong>Run marimo wherever MDX runs.</strong></p>
 
-Compose reactive Python, SQL, and Markdown cells inside documentation,
-tutorials, and articles. Write marimo cells alongside ordinary content while
-the host keeps control of the surrounding layout, components, navigation, and
-theme.
+[MDX](https://mdxjs.com/) combines Markdown with components. `mdx-marimo`
+adds reactive Python, SQL, and Markdown cells to MDX pages while the host keeps
+control of the surrounding layout, components, navigation, and theme.
 
 mdx-marimo renders the initial output at build time, then hydrates the page with
 Pyodide as one reactive notebook. Visitors can use controls, edit Python, and
