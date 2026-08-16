@@ -40,7 +40,11 @@ export function createTypeEnvironment(sourceCode: SourceCode): TypeEnvironment {
 }
 
 function typeReferenceName(type: ESTree.TSTypeReference): string | null {
-	return type.typeName.type === "Identifier" ? type.typeName.name : null;
+	return type.typeName.type === "Identifier"
+		? type.typeName.name
+		: type.typeName.type === "TSQualifiedName"
+			? type.typeName.right.name
+			: null;
 }
 
 function isBuiltIn(
@@ -131,8 +135,7 @@ function unsafeDirectValue(
 	}
 	if (unwrapped.type !== "TSTypeReference") return null;
 	const name = typeReferenceName(unwrapped);
-	if (name === null) return null;
-	if (TRANSPARENT_WRAPPERS.has(name) && isBuiltIn(unwrapped, name, environment)) {
+	if (name !== null && TRANSPARENT_WRAPPERS.has(name) && isBuiltIn(unwrapped, name, environment)) {
 		const wrapped = unwrapped.typeArguments?.params[0];
 		return wrapped === undefined
 			? null
@@ -199,7 +202,6 @@ function dictionaryValueTypes(
 
 	if (unwrapped.type !== "TSTypeReference") return [];
 	const name = typeReferenceName(unwrapped);
-	if (name === null) return [];
 
 	const substitution = resolveTypeSubstitution(environment.sourceCode, unwrapped, substitutions);
 	if (substitution !== null) {
@@ -215,7 +217,7 @@ function dictionaryValueTypes(
 		);
 	}
 
-	if (TRANSPARENT_WRAPPERS.has(name) && isBuiltIn(unwrapped, name, environment)) {
+	if (name !== null && TRANSPARENT_WRAPPERS.has(name) && isBuiltIn(unwrapped, name, environment)) {
 		const wrapped = unwrapped.typeArguments?.params[0];
 		return wrapped === undefined
 			? []
@@ -311,8 +313,7 @@ export function classifyWideningTarget(
 	}
 	if (unwrapped.type !== "TSTypeReference") return null;
 	const name = typeReferenceName(unwrapped);
-	if (name === null) return null;
-	if (TRANSPARENT_WRAPPERS.has(name) && isBuiltIn(unwrapped, name, environment)) {
+	if (name !== null && TRANSPARENT_WRAPPERS.has(name) && isBuiltIn(unwrapped, name, environment)) {
 		const wrapped = unwrapped.typeArguments?.params[0];
 		return wrapped === undefined ? null : classifyWideningTarget(wrapped, environment);
 	}
@@ -399,7 +400,6 @@ function classifyAliasBroadTarget(
 	}
 	if (unwrapped.type !== "TSTypeReference") return null;
 	const name = typeReferenceName(unwrapped);
-	if (name === null) return null;
 	const substitution = resolveTypeSubstitution(environment.sourceCode, unwrapped, substitutions);
 	if (substitution !== null) {
 		if (resolvingParameters.has(substitution.parameter)) return null;
@@ -413,7 +413,7 @@ function classifyAliasBroadTarget(
 			nextResolvingParameters,
 		);
 	}
-	if (TRANSPARENT_WRAPPERS.has(name) && isBuiltIn(unwrapped, name, environment)) {
+	if (name !== null && TRANSPARENT_WRAPPERS.has(name) && isBuiltIn(unwrapped, name, environment)) {
 		const wrapped = unwrapped.typeArguments?.params[0];
 		return wrapped === undefined
 			? null

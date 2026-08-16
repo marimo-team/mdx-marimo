@@ -8,6 +8,8 @@ testRule("no-known-value-widening", noKnownValueWideningRule, {
     'const values: { [Key in PropertyKey | "first"]: unknown } = {};',
     "const values: { [Key in keyof any]: unknown } = {};",
     'const values: Record<string | "first", unknown> = {};',
+    "namespace Types { export type Values = Record<string, string>; } const values: Types.Values = {};",
+    'export {}; namespace globalThis { export type Record<Key, Value> = { key: Key; value: Value }; } const values: globalThis.Record<string, string> = { key: "name", value: "Ada" };',
   ],
   invalid: [
     {
@@ -32,6 +34,14 @@ testRule("no-known-value-widening", noKnownValueWideningRule, {
     },
     {
       code: 'type Values = Record<"first" | "second", unknown>; const values: Values = {};',
+      errors: [{ messageId: "widening" }],
+    },
+    {
+      code: 'namespace Types { export type Values = Record<string, string>; } const values: Types.Values = { name: "Ada" };',
+      errors: [{ messageId: "widening" }],
+    },
+    {
+      code: 'const values: globalThis.Record<string, string> = { name: "Ada" };',
       errors: [{ messageId: "widening" }],
     },
   ],

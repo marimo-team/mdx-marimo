@@ -1,6 +1,7 @@
 import { defineRule } from "@oxlint/plugins";
 import type { ESTree } from "@oxlint/plugins";
 
+import { resolveValueVariable } from "../shared/scope.ts";
 import { staticPropertyName } from "../shared/static-property-name.ts";
 
 const FORBIDDEN_SYMBOL_NAME = "shape";
@@ -118,9 +119,12 @@ export const noStructuralPlaceholderNamesRule = defineRule({
       },
       MethodDefinition: reportClassElement,
       Property(node) {
-        if (node.parent?.type === "ObjectExpression") {
-          reportPropertyKey(node.key, node.computed);
+        if (node.parent?.type !== "ObjectExpression") return;
+        if (node.shorthand && node.key.type === "Identifier") {
+          const variable = resolveValueVariable(context.sourceCode, node.key);
+          if (variable !== null && variable.defs.length > 0) return;
         }
+        reportPropertyKey(node.key, node.computed);
       },
       PropertyDefinition: reportClassElement,
       TSAbstractAccessorProperty: reportClassElement,

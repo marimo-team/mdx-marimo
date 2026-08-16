@@ -22,6 +22,14 @@ testRule("no-structural-placeholder-names", noStructuralPlaceholderNamesRule, {
       errors: [{ messageId: "forbiddenSymbolName" }],
     },
     {
+      code: "const dataShape = value;\nconst options = { dataShape };",
+      errors: [{ messageId: "forbiddenSymbolName", line: 1 }],
+    },
+    {
+      code: "const options = { dataShape };",
+      errors: [{ messageId: "forbiddenSymbolName" }],
+    },
+    {
       code: "const options = { dataShape: value };",
       errors: [{ messageId: "forbiddenSymbolName" }],
     },

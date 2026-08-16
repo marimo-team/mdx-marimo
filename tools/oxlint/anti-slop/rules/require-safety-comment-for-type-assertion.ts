@@ -37,6 +37,30 @@ const enclosingDeclarationKinds = new Set([
   "TSEnumDeclaration",
 ]);
 
+function isTransparentExpressionParent(parent: ESTree.Node, child: ESTree.Node): boolean {
+  return (
+    (parent.type === "ParenthesizedExpression" ||
+      parent.type === "TSAsExpression" ||
+      parent.type === "TSNonNullExpression" ||
+      parent.type === "TSSatisfiesExpression" ||
+      parent.type === "TSTypeAssertion") &&
+    parent.expression === child
+  );
+}
+
+function isImmediatelyInvokedFunctionBody(node: ESTree.Node, descendant: ESTree.Node): boolean {
+  if (node.type !== "ArrowFunctionExpression" && node.type !== "FunctionExpression") return false;
+  if (node.body !== descendant) return false;
+  let callee: ESTree.Node = node;
+  while (true) {
+    const parent: ESTree.Node | null = callee.parent;
+    if (parent === null || !isTransparentExpressionParent(parent, callee)) break;
+    callee = parent;
+  }
+  const parent: ESTree.Node | null = callee.parent;
+  return parent !== null && parent.type === "CallExpression" && parent.callee === callee;
+}
+
 function isConstAssertion(node: TypeAssertion): boolean {
   return (
     node.typeAnnotation.type === "TSTypeReference" &&
@@ -46,9 +70,16 @@ function isConstAssertion(node: TypeAssertion): boolean {
 }
 
 function hasSafetyComment(sourceCode: SourceCode, node: TypeAssertion): boolean {
+  let descendant: ESTree.Node = node;
   let current: ESTree.Node = node;
   while (true) {
-    if (current !== node && enclosingDeclarationKinds.has(current.type)) return false;
+    if (
+      current !== node &&
+      enclosingDeclarationKinds.has(current.type) &&
+      !isImmediatelyInvokedFunctionBody(current, descendant)
+    ) {
+      return false;
+    }
     if (
       sourceCode
         .getCommentsBefore(current)
@@ -57,6 +88,7 @@ function hasSafetyComment(sourceCode: SourceCode, node: TypeAssertion): boolean 
       return true;
     }
     if (commentOwnerKinds.has(current.type) || current.parent.type === "Program") return false;
+    descendant = current;
     current = current.parent;
   }
 }

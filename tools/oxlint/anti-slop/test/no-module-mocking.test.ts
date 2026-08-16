@@ -10,6 +10,27 @@ testRule("no-module-mocking", noModuleMockingRule, {
     `
       function register(vi: { mock(name: string): void }) {
         (vi?.mock)("./service");
+        vi!.mock("./service");
+      }
+    `,
+    `
+      export {};
+      const globalThis = { vi: { mock(name: string): void {} } };
+      globalThis!.vi.mock("./service");
+    `,
+    `
+      import * as testApi from "./test-api";
+      testApi!.vi.mock("./service");
+    `,
+    `
+      import * as testApi from "vite-plus/test";
+      testApi.vi.fn();
+      globalThis!.vi.fn();
+    `,
+    `
+      import * as testApi from "vite-plus/test";
+      function register(testApi: { vi: { mock(name: string): void } }) {
+        testApi.vi.mock("./service");
       }
     `,
   ],
@@ -67,6 +88,40 @@ testRule("no-module-mocking", noModuleMockingRule, {
       code: `
         import { vi } from "vite-plus/test";
         vi["mock" satisfies string]("./service");
+      `,
+      errors: [{ messageId: "moduleMock" }],
+    },
+    {
+      code: 'globalThis.vi.mock("./service");',
+      errors: [{ messageId: "moduleMock" }],
+    },
+    {
+      code: 'vi!.mock("./service");',
+      errors: [{ messageId: "moduleMock" }],
+    },
+    {
+      code: 'globalThis!.vi.mock("./service");',
+      errors: [{ messageId: "moduleMock" }],
+    },
+    {
+      code: '(vi satisfies typeof vi).mock("./service");',
+      errors: [{ messageId: "moduleMock" }],
+    },
+    {
+      code: '(<typeof vi>vi).mock("./service");',
+      errors: [{ messageId: "moduleMock" }],
+    },
+    {
+      code: `
+        import * as testApi from "vite-plus/test";
+        testApi.vi.mock("./service");
+      `,
+      errors: [{ messageId: "moduleMock" }],
+    },
+    {
+      code: `
+        import * as testApi from "vite-plus/test";
+        testApi!.vi.mock("./service");
       `,
       errors: [{ messageId: "moduleMock" }],
     },

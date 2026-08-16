@@ -37,6 +37,47 @@ function resolveReferenceVariable(
   return null;
 }
 
+function resolveTypeNameVariables(
+  sourceCode: SourceCode,
+  name: ESTree.TSTypeReference["typeName"],
+  resolving: ReadonlySet<Variable> = new Set(),
+): readonly Variable[] {
+  if (name.type === "Identifier") {
+    const variable = resolveTypeVariable(sourceCode, name);
+    if (variable === null || resolving.has(variable)) return [];
+    const variables = new Set<Variable>([variable]);
+    const nextResolving = new Set(resolving);
+    nextResolving.add(variable);
+    for (const definition of variable.defs) {
+      if (
+        definition.node.type !== "TSImportEqualsDeclaration" ||
+        definition.node.moduleReference.type === "TSExternalModuleReference"
+      ) {
+        continue;
+      }
+      for (const target of resolveTypeNameVariables(
+        sourceCode,
+        definition.node.moduleReference,
+        nextResolving,
+      )) {
+        variables.add(target);
+      }
+    }
+    return [...variables];
+  }
+  if (name.type !== "TSQualifiedName") return [];
+
+  const variables = new Set<Variable>();
+  for (const namespace of resolveTypeNameVariables(sourceCode, name.left, resolving)) {
+    for (const definition of namespace.defs) {
+      if (definition.node.type !== "TSModuleDeclaration") continue;
+      const member = sourceCode.scopeManager.acquire(definition.node)?.set.get(name.right.name);
+      if (member !== undefined) variables.add(member);
+    }
+  }
+  return [...variables];
+}
+
 /** Resolve an expression identifier in TypeScript's value namespace. */
 export function resolveValueVariable(
   sourceCode: SourceCode,
@@ -58,12 +99,15 @@ export function resolveTypeAlias(
   sourceCode: SourceCode,
   reference: ESTree.TSTypeReference,
 ): ESTree.TSTypeAliasDeclaration | null {
-  if (reference.typeName.type !== "Identifier") return null;
-  const variable = resolveTypeVariable(sourceCode, reference.typeName);
-  if (variable === null) return null;
-  const aliases = variable.defs.flatMap((definition) =>
-    definition.node.type === "TSTypeAliasDeclaration" ? [definition.node] : [],
-  );
+  const aliases = [
+    ...new Set(
+      resolveTypeNameVariables(sourceCode, reference.typeName).flatMap((variable) =>
+        variable.defs.flatMap((definition) =>
+          definition.node.type === "TSTypeAliasDeclaration" ? [definition.node] : [],
+        ),
+      ),
+    ),
+  ];
   return aliases.length === 1 ? (aliases[0] ?? null) : null;
 }
 
@@ -133,13 +177,15 @@ export function resolveInterfaces(
   sourceCode: SourceCode,
   reference: ESTree.TSTypeReference,
 ): readonly ESTree.TSInterfaceDeclaration[] {
-  if (reference.typeName.type !== "Identifier") return [];
-  const variable = resolveTypeVariable(sourceCode, reference.typeName);
-  if (variable === null) return [];
-  if (variable.defs.some((definition) => definition.node.type !== "TSInterfaceDeclaration")) {
+  const definitions = [
+    ...new Set(
+      resolveTypeNameVariables(sourceCode, reference.typeName).flatMap((variable) => variable.defs),
+    ),
+  ].filter((definition) => definition.node.type !== "TSImportEqualsDeclaration");
+  if (definitions.some((definition) => definition.node.type !== "TSInterfaceDeclaration")) {
     return [];
   }
-  return variable.defs.flatMap((definition) =>
+  return definitions.flatMap((definition) =>
     definition.node.type === "TSInterfaceDeclaration" ? [definition.node] : [],
   );
 }
@@ -150,9 +196,19 @@ export function isGlobalTypeReference(
   reference: ESTree.TSTypeReference,
   name: string,
 ): boolean {
-  if (reference.typeName.type !== "Identifier" || reference.typeName.name !== name) {
+  if (reference.typeName.type === "Identifier") {
+    if (reference.typeName.name !== name) return false;
+    const variable = resolveTypeVariable(sourceCode, reference.typeName);
+    return variable === null || variable.defs.length === 0;
+  }
+  if (
+    reference.typeName.type !== "TSQualifiedName" ||
+    reference.typeName.left.type !== "Identifier" ||
+    reference.typeName.left.name !== "globalThis" ||
+    reference.typeName.right.name !== name
+  ) {
     return false;
   }
-  const variable = resolveTypeVariable(sourceCode, reference.typeName);
-  return variable === null || variable.defs.length === 0;
+  const namespace = resolveTypeVariable(sourceCode, reference.typeName.left);
+  return namespace === null || namespace.defs.length === 0;
 }
