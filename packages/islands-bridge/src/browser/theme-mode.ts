@@ -2,6 +2,11 @@ export type MarimoThemeMode = "auto" | "light" | "dark";
 export type ResolvedMarimoTheme = "light" | "dark";
 export type MarimoThemeResolver = (host: HTMLElement) => ResolvedMarimoTheme | undefined;
 
+type ThemePlatform = {
+  getComputedStyle?: Window["getComputedStyle"];
+  window?: Pick<Window, "matchMedia">;
+};
+
 const themeDataAttributes = ["data-theme", "data-color-mode", "data-mode"];
 
 export const themeAttributeFilter = [
@@ -34,12 +39,13 @@ function currentTheme(host: HTMLElement | undefined): ResolvedMarimoTheme {
     if (explicitTheme) return explicitTheme;
   }
 
-  if (host && typeof getComputedStyle === "function") {
-    const schemes = getComputedStyle(host).colorScheme.split(/\s+/);
+  const platform: ThemePlatform = globalThis;
+  if (host && platform.getComputedStyle) {
+    const schemes = platform.getComputedStyle(host).colorScheme.split(/\s+/);
     if (schemes.length === 1 && schemes[0] === "dark") return "dark";
     if (schemes.length === 1 && schemes[0] === "light") return "light";
     if (schemes.includes("dark") && schemes.includes("light")) {
-      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      return platform.window?.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     }
   }
 

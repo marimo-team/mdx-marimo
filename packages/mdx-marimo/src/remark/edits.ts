@@ -1,18 +1,16 @@
-import type { RootContent } from "mdast";
+import type { Parent } from "mdast";
 import {
   projectPageCellPayloads,
   type CompiledMarimoPage,
   type MarimoDiagnostic,
   type MarimoPageSerializedCellPayload,
 } from "@marimo-team/mdx-marimo/bridge/protocol";
-import { marimoIslandNode } from "../mdx/nodes";
+import { marimoIslandNode, type MarimoIslandNodeOptions } from "../mdx/nodes";
 
-export type ParentNode = {
-  children: RootContent[];
-};
+export type ParentNode = Parent;
 
 export type MessageFile = {
-  message: (reason: string, place?: { line: number; column: number }) => unknown;
+  message(reason: string, place?: { line: number; column: number }): void;
 };
 
 export type TreeEdit =
@@ -53,12 +51,11 @@ export function applyTreeEdits(
 function islandNodeOptions(
   outputMode: MarimoTreeEditOutput,
   payload: MarimoPageSerializedCellPayload,
-): Parameters<typeof marimoIslandNode>[0] {
-  return {
-    ...(outputMode.elementName === undefined ? {} : { elementName: outputMode.elementName }),
-    ...(outputMode.theme === undefined ? {} : { theme: outputMode.theme }),
-    payload,
-  };
+): MarimoIslandNodeOptions {
+  const options: MarimoIslandNodeOptions = { payload };
+  if (outputMode.elementName !== undefined) options.elementName = outputMode.elementName;
+  if (outputMode.theme !== undefined) options.theme = outputMode.theme;
+  return options;
 }
 
 export function reportDiagnostic(file: MessageFile, diagnostic: MarimoDiagnostic): void {

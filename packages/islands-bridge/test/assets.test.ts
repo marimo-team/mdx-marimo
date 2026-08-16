@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { MarimoPageRuntime } from "../src/protocol";
 
+type TestAppHost = {
+  isConnected: boolean;
+};
+
+declare global {
+  var __marimoAssetEvents: string[];
+}
+
 let moduleId = 0;
 
 beforeEach(() => {
@@ -224,18 +232,18 @@ describe("app asset lifecycle", () => {
         globalThis.__marimoAssetEvents.push("stop:" + appId);
       }
     `);
-    const retainedHost = { isConnected: true } as Element;
+    const retainedHost = appHost();
     const retained = acquireAssets(
       pageWithCode("retained-app", "retained", moduleScript),
       retainedHost,
     );
     await retained.ready;
 
-    (retainedHost as { isConnected: boolean }).isConnected = false;
+    retainedHost.isConnected = false;
     const current = acquireAssets(pageWithCode("current-app", "current", moduleScript), appHost());
     await current.ready;
 
-    (retainedHost as { isConnected: boolean }).isConnected = true;
+    retainedHost.isConnected = true;
     await retained.activate();
 
     expect(assetEvents()).toEqual([
@@ -523,12 +531,12 @@ function moduleUrl(source: string): string {
   return `data:text/javascript;charset=utf-8,${encodeURIComponent(source)}#${moduleId}`;
 }
 
-function appHost(): Element {
-  return { isConnected: true } as Element;
+function appHost(): TestAppHost {
+  return { isConnected: true };
 }
 
 function assetEvents(): string[] {
-  return (globalThis as typeof globalThis & { __marimoAssetEvents: string[] }).__marimoAssetEvents;
+  return globalThis.__marimoAssetEvents;
 }
 
 async function flushMicrotasks(): Promise<void> {

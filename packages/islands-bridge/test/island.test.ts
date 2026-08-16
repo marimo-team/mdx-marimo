@@ -5,7 +5,7 @@ import { retainDocumentNavigation } from "../src/browser/navigation";
 import { applyMarimoTheme, installMarimoThemeBridge } from "../src/browser/theme";
 import { MARIMO_PAGE_PROTOCOL_VERSION, type MarimoPageCellPayload } from "../src/protocol";
 
-const testDocument = {} as Document;
+const testDocument = {};
 
 vi.mock("../src/browser/assets", () => ({
   acquireAssets: vi.fn(),
@@ -33,10 +33,10 @@ afterEach(() => {
 
 describe("mountMarimoIsland", () => {
   it("mounts static HTML with host and theme metadata", () => {
-    const host = new TestHost();
+    const host = testHost();
     const staticPayload = { ...payload(), app: null };
 
-    const cleanup = mountMarimoIsland(host as unknown as HTMLElement, staticPayload, {
+    const cleanup = mountMarimoIsland(host, staticPayload, {
       host: "publisher",
       theme: "dark",
     });
@@ -63,8 +63,8 @@ describe("mountMarimoIsland", () => {
     vi.mocked(retainDocumentNavigation).mockReturnValue(releaseNavigation);
     vi.mocked(acquireAssets).mockReturnValue(assetsLease(true, releaseAssets));
 
-    const host = new TestHost();
-    const cleanup = mountMarimoIsland(host as unknown as HTMLElement, payload());
+    const host = testHost();
+    const cleanup = mountMarimoIsland(host, payload());
     await flushMicrotasks();
 
     expect(releaseNavigation).toHaveBeenCalledTimes(1);
@@ -78,10 +78,10 @@ describe("mountMarimoIsland", () => {
     const pending = deferred<boolean>();
     const releaseAssets = vi.fn();
     vi.mocked(acquireAssets).mockReturnValue(assetsLease(pending.promise, releaseAssets));
-    const host = new TestHost();
+    const host = testHost();
     host.dataset.marimoThemeMode = "light";
 
-    const cleanup = mountMarimoIsland(host as unknown as HTMLElement, payload());
+    const cleanup = mountMarimoIsland(host, payload());
     host.dataset.marimoThemeMode = "dark";
     pending.resolve(true);
     await flushMicrotasks();
@@ -96,7 +96,7 @@ describe("mountMarimoIsland", () => {
     vi.mocked(retainDocumentNavigation).mockReturnValue(releaseNavigation);
     vi.mocked(acquireAssets).mockReturnValue(assetsLease(false, releaseAssets));
 
-    const cleanup = mountMarimoIsland(new TestHost() as unknown as HTMLElement, payload());
+    const cleanup = mountMarimoIsland(testHost(), payload());
     await flushMicrotasks();
 
     expect(releaseNavigation).not.toHaveBeenCalled();
@@ -112,7 +112,7 @@ describe("mountMarimoIsland", () => {
     vi.mocked(retainDocumentNavigation).mockReturnValue(releaseNavigation);
     vi.mocked(acquireAssets).mockReturnValue(assetsLease(pending.promise, releaseAssets));
 
-    const cleanup = mountMarimoIsland(new TestHost() as unknown as HTMLElement, payload());
+    const cleanup = mountMarimoIsland(testHost(), payload());
     cleanup();
     pending.resolve(true);
     await flushMicrotasks();
@@ -125,7 +125,7 @@ describe("mountMarimoIsland", () => {
     vi.mocked(hasConfirmedSoftNavigationAssets).mockReturnValue(true);
     vi.mocked(acquireAssets).mockReturnValue(assetsLease(true));
 
-    const cleanup = mountMarimoIsland(new TestHost() as unknown as HTMLElement, payload());
+    const cleanup = mountMarimoIsland(testHost(), payload());
 
     expect(retainDocumentNavigation).not.toHaveBeenCalled();
     cleanup();
@@ -137,7 +137,7 @@ describe("mountMarimoIsland", () => {
     vi.mocked(retainDocumentNavigation).mockReturnValue(releaseNavigation);
     vi.mocked(acquireAssets).mockReturnValue(assetsLease(false));
 
-    const cleanup = mountMarimoIsland(new TestHost() as unknown as HTMLElement, payload());
+    const cleanup = mountMarimoIsland(testHost(), payload());
     expect(retainDocumentNavigation).not.toHaveBeenCalled();
 
     await flushMicrotasks();
@@ -155,13 +155,13 @@ describe("mountMarimoIsland", () => {
     const lease = assetsLease(false);
     lease.activate.mockResolvedValue(true);
     vi.mocked(acquireAssets).mockReturnValue(lease);
-    const host = new TestHost();
-    const cleanup = mountMarimoIsland(host as unknown as HTMLElement, payload());
+    const host = testHost();
+    const cleanup = mountMarimoIsland(host, payload());
     await flushMicrotasks();
     expect(retainDocumentNavigation).toHaveBeenCalledOnce();
     expect(releaseNavigation).not.toHaveBeenCalled();
 
-    reconnectMarimoIsland(host as unknown as HTMLElement);
+    reconnectMarimoIsland(host);
     await flushMicrotasks();
 
     expect(lease.activate).toHaveBeenCalledTimes(2);
@@ -170,9 +170,9 @@ describe("mountMarimoIsland", () => {
   });
 
   it("rejects hosts from another document", () => {
-    const host = new TestHost({} as Document);
+    const host = testHost({});
 
-    expect(() => mountMarimoIsland(host as unknown as HTMLElement, payload())).toThrowError(
+    expect(() => mountMarimoIsland(host, payload())).toThrowError(
       "Marimo islands must be mounted in the current document",
     );
   });
@@ -190,6 +190,20 @@ class TestHost {
     if (name === "data-marimo-theme-mode") return this.dataset.marimoThemeMode ?? null;
     return null;
   }
+}
+
+function testHost(ownerDocument = testDocument): HTMLElement {
+  vi.stubGlobal(
+    "HTMLElement",
+    class extends TestHost {
+      constructor() {
+        super(ownerDocument);
+      }
+    },
+  );
+  const host = new HTMLElement();
+  vi.stubGlobal("HTMLElement", class {});
+  return host;
 }
 
 function assetsLease(result: boolean | Promise<boolean>, release = vi.fn()) {
@@ -229,10 +243,7 @@ function payload(): MarimoPageCellPayload {
   };
 }
 
-function deferred<T>(): {
-  promise: Promise<T>;
-  resolve: (value: T) => void;
-} {
+function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((complete) => {
     resolve = complete;

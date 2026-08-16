@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { parse as parseToml } from "smol-toml";
+import { parse as parseToml, type TomlValueWithoutBigInt } from "smol-toml";
 
 export type UvOptions = {
   cwd?: string;
@@ -13,8 +13,8 @@ const defaultPythonVersion = "3.12";
 const nodeRequire = createRequire(import.meta.url);
 
 type PyprojectDocument = {
-  dependencies?: unknown;
-  "requires-python"?: unknown;
+  dependencies: TomlValueWithoutBigInt | undefined;
+  "requires-python": TomlValueWithoutBigInt | undefined;
 };
 
 export function resolveUvCommand(options: UvOptions = {}): string {
@@ -80,8 +80,8 @@ function pythonRequest(document: PyprojectDocument): string {
 }
 
 function pyprojectRequiresPython(document: PyprojectDocument): string | undefined {
-  const requirement = document["requires-python"];
-  return typeof requirement === "string" && requirement.trim() ? requirement : undefined;
+  const requirement = tomlString(document["requires-python"]);
+  return requirement?.trim() ? requirement : undefined;
 }
 
 function versionForOperator(parts: string[], operator: string): string | undefined {
@@ -122,11 +122,16 @@ function compareVersions(left: string, right: string): number {
 function pyprojectDependencies(document: PyprojectDocument): string[] {
   const dependencies = document.dependencies;
   if (!Array.isArray(dependencies)) return [];
-  return dependencies.filter((dependency): dependency is string => typeof dependency === "string");
+  return dependencies.flatMap((dependency) => {
+    const parsed = tomlString(dependency);
+    return parsed === undefined ? [] : [parsed];
+  });
 }
 
 function parsePyproject(pyproject: string | undefined): PyprojectDocument {
-  if (!pyproject?.trim()) return {};
+  if (!pyproject?.trim()) {
+    return { dependencies: undefined, "requires-python": undefined };
+  }
   const source = pyproject.trim();
   const lines = source.split(/\r?\n/);
   const toml =
@@ -140,9 +145,21 @@ function parsePyproject(pyproject: string | undefined): PyprojectDocument {
           })
           .join("\n")
       : source;
-  return parseToml(toml) as PyprojectDocument;
+  const document = parseToml(toml, { integersAsBigInt: false });
+  return {
+    dependencies: document.dependencies,
+    "requires-python": document["requires-python"],
+  };
 }
 
 function isMarimoDependency(dependency: string): boolean {
   return /^marimo(?:$|[\s[<>=!~@;])/.test(dependency.trim().toLowerCase());
+}
+
+function tomlString(value: TomlValueWithoutBigInt | undefined): string | undefined {
+  return isTomlString(value) ? value : undefined;
+}
+
+function isTomlString(value: TomlValueWithoutBigInt | undefined): value is string {
+  return Object(value) !== value && Object.prototype.toString.call(value) === "[object String]";
 }

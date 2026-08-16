@@ -3,11 +3,12 @@ import {
   mountMarimoIsland,
   reconnectMarimoIsland,
   renderMarimoIslandError,
+  type MountMarimoIslandOptions,
 } from "../browser/island";
 import { type MarimoThemeMode, type MarimoThemeResolver } from "../browser/theme";
 import {
-  isMarimoPageCellPayload,
-  isMarimoPageCellReferencePayload,
+  parseMarimoPageSerializedCellPayload,
+  type JsonValue,
   type MarimoPageCellPayload,
   type MarimoPageCellReferencePayload,
   type MarimoPageRuntime,
@@ -37,7 +38,7 @@ export type MarimoIslandElementMount = {
 
 type RegisteredPageApp = {
   app: MarimoPageRuntime;
-  owners: Set<object>;
+  owners: Set<MarimoIslandElement>;
 };
 
 type PageAppDocumentState = {
@@ -67,6 +68,16 @@ type ElementMountDocument = Document & {
   [pageAppRegistrySymbol]?: PageAppDocumentState;
 };
 
+type ElementPlatform = {
+  customElements?: CustomElementRegistry;
+  HTMLElement?: typeof HTMLElement;
+  MutationObserver?: typeof MutationObserver;
+};
+
+type CallableElementBase = Function & {
+  prototype: HTMLElement;
+};
+
 const elementMountSymbol = Symbol.for("@marimo-team/islands-bridge/element-mount");
 const elementMountRegistrySymbol = Symbol.for("@marimo-team/islands-bridge/element-mount-registry");
 const pageAppRegistrySymbol = Symbol.for("@marimo-team/islands-bridge/page-app-registry");
@@ -80,11 +91,17 @@ export function defineMarimoIslandElement({
   host,
   themeResolver,
 }: DefineMarimoIslandElementOptions): CustomElementConstructor | undefined {
-  if (typeof customElements === "undefined" || typeof HTMLElement === "undefined") return undefined;
-  const existing = customElements.get(name);
+  const platform: ElementPlatform = globalThis;
+  if (!platform.customElements || !platform.HTMLElement) return undefined;
+  const existing = platform.customElements.get(name);
   if (existing) return existing;
-  const constructor = createMarimoIslandElementConstructor(host, themeResolver);
-  customElements.define(name, constructor);
+  const constructor = createMarimoIslandElementConstructor(
+    platform.HTMLElement,
+    platform.MutationObserver,
+    host,
+    themeResolver,
+  );
+  platform.customElements.define(name, constructor);
   return constructor;
 }
 
@@ -103,7 +120,7 @@ export function mountMarimoIslandElement(
     throw new Error("Custom elements are unavailable");
   }
 
-  const host = parent as ElementMountHost;
+  const host: ElementMountHost = parent;
   const registry = elementMountRegistry(parent.ownerDocument);
   const retentionKey = options.retentionKey ?? payloadRetentionKey(payload);
   const registryKey = retentionKey ? `${options.name}\0${retentionKey}` : undefined;
@@ -126,6 +143,8 @@ export function mountMarimoIslandElement(
 
   let element = previous?.element;
   if (!element) {
+    // SAFETY: The registered constructor for options.name implements the exported
+    // MarimoIslandElement payload contract and the optional retention fields.
     element = parent.ownerDocument.createElement(options.name) as RetainableMarimoIslandElement;
     element.payload = payload;
   }
@@ -140,8 +159,8 @@ export function mountMarimoIslandElement(
     element,
     host,
     payloadRevision,
-    ...(registryKey ? { registryKey } : {}),
   };
+  if (registryKey) state.registryKey = registryKey;
   host[elementMountSymbol] = state;
   element[elementRetentionSymbol] = state;
   if (registryKey) registry.set(registryKey, state);
@@ -170,18 +189,15 @@ export function mountMarimoIslandElement(
 }
 
 function createMarimoIslandElementConstructor(
+  HTMLElementConstructor: typeof HTMLElement,
+  MutationObserverConstructor: typeof MutationObserver | undefined,
   hostKind: string | undefined,
   themeResolver: MarimoThemeResolver | undefined,
 ): CustomElementConstructor {
-  // Some host bundles downlevel dependency classes. This callable superclass
-  // preserves native HTMLElement construction in those builds.
-  function MarimoElementBase(this: HTMLElement): HTMLElement {
-    return Reflect.construct(HTMLElement, [], this.constructor) as HTMLElement;
-  }
-
-  Object.setPrototypeOf(MarimoElementBase, HTMLElement);
-  MarimoElementBase.prototype = HTMLElement.prototype;
-  const ElementBase = MarimoElementBase as unknown as typeof HTMLElement;
+  const ElementBase = createCallableElementBase(HTMLElementConstructor);
+  const mountOptions: MountMarimoIslandOptions = {};
+  if (hostKind) mountOptions.host = hostKind;
+  if (themeResolver) mountOptions.themeResolver = themeResolver;
 
   return class MarimoIslandElement extends ElementBase {
     #cleanup: (() => void) | undefined;
@@ -193,29 +209,35 @@ function createMarimoIslandElementConstructor(
     #payloadObserver: MutationObserver | undefined;
     #retainedDisconnect = false;
     #serializedPayload: MarimoPageSerializedCellPayload | undefined;
+    declare [elementRetentionSymbol]: RetainedElementMount | undefined;
 
     get payload(): MarimoPageSerializedCellPayload | undefined {
       return this.#serializedPayload;
     }
 
     set payload(payload: MarimoPageSerializedCellPayload | undefined) {
-      if (
-        payload !== undefined &&
-        !isMarimoPageCellPayload(payload) &&
-        !isMarimoPageCellReferencePayload(payload)
-      ) {
+      const nextPayload =
+        payload === undefined ? undefined : parseMarimoPageSerializedCellPayload(payload);
+      if (payload !== undefined && !nextPayload) {
         throw new TypeError("Invalid marimo page cell payload");
       }
-      if (payload === this.#serializedPayload) return;
+      if (
+        nextPayload === this.#serializedPayload ||
+        (nextPayload !== undefined &&
+          this.#serializedPayload !== undefined &&
+          JSON.stringify(nextPayload) === JSON.stringify(this.#serializedPayload))
+      ) {
+        return;
+      }
 
       this.#cleanup?.();
       this.#cleanup = undefined;
       this.#stopAppRegistration();
       this.#stopAppWait();
       this.#stopPayloadWait();
-      this.#serializedPayload = payload;
+      this.#serializedPayload = nextPayload;
       this.#payload = undefined;
-      if (this.isConnected && payload) this.#queueMount();
+      if (this.isConnected && nextPayload) this.#queueMount();
     }
 
     connectedCallback(): void {
@@ -236,7 +258,7 @@ function createMarimoIslandElementConstructor(
       if (this.#disconnectTimer !== undefined) clearTimeout(this.#disconnectTimer);
       this.#disconnectTimer = setTimeout(() => {
         this.#disconnectTimer = undefined;
-        const retained = (this as RetainableMarimoIslandElement)[elementRetentionSymbol];
+        const retained = this[elementRetentionSymbol];
         if (retained?.cancelRelease) {
           this.#retainedDisconnect = true;
           return;
@@ -276,13 +298,10 @@ function createMarimoIslandElementConstructor(
           this.#payload ?? resolvePayload(this.ownerDocument, this.#serializedPayload);
         if (!this.#payload) {
           const reference = this.#serializedPayload;
-          if (!isMarimoPageCellReferencePayload(reference)) {
+          if (!("appId" in reference)) {
             throw new Error("Invalid marimo page cell reference");
           }
-          this.#cleanup ??= mountMarimoIsland(this, staticPayload(reference), {
-            ...(hostKind ? { host: hostKind } : {}),
-            ...(themeResolver ? { themeResolver } : {}),
-          });
+          this.#cleanup ??= mountMarimoIsland(this, staticPayload(reference), mountOptions);
           this.#waitForApp(reference.appId);
           return;
         }
@@ -291,10 +310,7 @@ function createMarimoIslandElementConstructor(
         this.#stopAppWait();
         this.#stopPayloadWait();
         this.#cleanup?.();
-        this.#cleanup = mountMarimoIsland(this, this.#payload, {
-          ...(hostKind ? { host: hostKind } : {}),
-          ...(themeResolver ? { themeResolver } : {}),
-        });
+        this.#cleanup = mountMarimoIsland(this, this.#payload, mountOptions);
       } catch (error: unknown) {
         this.#cleanup?.();
         this.#cleanup = undefined;
@@ -309,8 +325,8 @@ function createMarimoIslandElementConstructor(
     }
 
     #waitForPayload(): void {
-      if (this.#payloadObserver || typeof MutationObserver === "undefined") return;
-      this.#payloadObserver = new MutationObserver(() => {
+      if (this.#payloadObserver || !MutationObserverConstructor) return;
+      this.#payloadObserver = new MutationObserverConstructor(() => {
         if (readPayloadSource(this)) this.#queueMount();
       });
       this.#payloadObserver.observe(this, { childList: true, subtree: true });
@@ -355,18 +371,36 @@ function createMarimoIslandElementConstructor(
       this.#stopAppRegistration();
       this.#stopAppWait();
       this.#stopPayloadWait();
-      if (this.#serializedPayload && isMarimoPageCellReferencePayload(this.#serializedPayload)) {
+      if (this.#serializedPayload && "appId" in this.#serializedPayload) {
         this.#payload = undefined;
       }
     }
   };
 }
 
+// Some host bundles downlevel dependency classes. This callable superclass
+// preserves native HTMLElement construction in those builds.
+function createCallableElementBase(
+  HTMLElementConstructor: typeof HTMLElement,
+): CustomElementConstructor;
+function createCallableElementBase(
+  HTMLElementConstructor: typeof HTMLElement,
+): CallableElementBase {
+  function MarimoElementBase(this: HTMLElement): HTMLElement {
+    return Reflect.construct(HTMLElementConstructor, [], this.constructor);
+  }
+
+  Object.setPrototypeOf(MarimoElementBase, HTMLElementConstructor);
+  MarimoElementBase.prototype = HTMLElementConstructor.prototype;
+  return MarimoElementBase;
+}
+
 function readPayload(host: HTMLElement): MarimoPageSerializedCellPayload | undefined {
   const source = readPayloadSource(host);
   if (!source) return undefined;
-  const payload: unknown = JSON.parse(source);
-  if (isMarimoPageCellPayload(payload) || isMarimoPageCellReferencePayload(payload)) return payload;
+  const payload: JsonValue = JSON.parse(source);
+  const parsed = parseMarimoPageSerializedCellPayload(payload);
+  if (parsed) return parsed;
   throw new Error("Invalid marimo page cell payload");
 }
 
@@ -374,7 +408,7 @@ function resolvePayload(
   document: Document,
   payload: MarimoPageSerializedCellPayload,
 ): MarimoPageCellPayload | undefined {
-  if (isMarimoPageCellPayload(payload)) {
+  if ("app" in payload) {
     return payload;
   }
 
@@ -395,7 +429,11 @@ function staticPayload(payload: MarimoPageCellReferencePayload): MarimoPageCellP
   };
 }
 
-function registerPageApp(document: Document, app: MarimoPageRuntime, owner: object): () => void {
+function registerPageApp(
+  document: Document,
+  app: MarimoPageRuntime,
+  owner: MarimoIslandElement,
+): () => void {
   const state = pageAppDocumentState(document);
   let registration = state.apps.get(app.id);
   if (!registration || registration.app !== app) {
@@ -450,7 +488,7 @@ function decodeBase64Url(value: string): string {
 }
 
 function payloadRetentionKey(payload: MarimoPageSerializedCellPayload): string | undefined {
-  const appId = isMarimoPageCellPayload(payload) ? payload.app?.id : payload.appId;
+  const appId = "app" in payload ? payload.app?.id : payload.appId;
   return appId ? `${appId}:${payload.cell.index}` : undefined;
 }
 
@@ -472,12 +510,12 @@ function disposeRetainedMount(
 }
 
 function elementMountRegistry(document: Document): Map<string, RetainedElementMount> {
-  const owner = document as ElementMountDocument;
+  const owner: ElementMountDocument = document;
   return (owner[elementMountRegistrySymbol] ??= new Map());
 }
 
 function pageAppDocumentState(document: Document): PageAppDocumentState {
-  const owner = document as ElementMountDocument;
+  const owner: ElementMountDocument = document;
   return (owner[pageAppRegistrySymbol] ??= {
     apps: new Map(),
     waiters: new Map(),

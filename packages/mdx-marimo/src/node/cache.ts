@@ -3,8 +3,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  isCompiledMarimoPage,
+  parseCompiledMarimoPage,
   type CompiledMarimoPage,
+  type JsonValue,
   type MarimoPageRequest,
 } from "@marimo-team/mdx-marimo/bridge/protocol";
 
@@ -15,8 +16,8 @@ export async function readCachedResult(
 ): Promise<CompiledMarimoPage | undefined> {
   const cachePath = resultCachePath(cacheDir, request, compilerScriptUrl);
   if (!existsSync(cachePath)) return undefined;
-  const result: unknown = JSON.parse(await readFile(cachePath, "utf8"));
-  return isCompiledMarimoPage(result) ? result : undefined;
+  const decoded: JsonValue = JSON.parse(await readFile(cachePath, "utf8"));
+  return parseCompiledMarimoPage(decoded);
 }
 
 export async function writeCachedResult(

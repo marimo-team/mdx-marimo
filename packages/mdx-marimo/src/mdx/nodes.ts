@@ -1,36 +1,47 @@
 import { Parser } from "acorn";
 import type { Program } from "estree";
-import type { RootContent } from "mdast";
+import type { MdxjsEsm, MdxJsxFlowElement } from "mdast-util-mdx";
 import {
   encodePageCellPayload,
   type MarimoPageSerializedCellPayload,
 } from "@marimo-team/mdx-marimo/bridge/protocol";
 import { defaultMarimoElementName, mdxMarimoHost } from "../element/name";
 
-export function sideEffectImportNode(importSource: string): RootContent {
+export type MarimoIslandNodeOptions = {
+  elementName?: string;
+  payload: MarimoPageSerializedCellPayload;
+  theme?: "auto" | "light" | "dark";
+};
+
+type MarimoMdxJsxFlowElement = MdxJsxFlowElement & {
+  data: NonNullable<MdxJsxFlowElement["data"]> & {
+    _mdxExplicitJsx: true;
+  };
+};
+
+export function sideEffectImportNode(importSource: string): MdxjsEsm {
   const value = `import ${JSON.stringify(importSource)}`;
+  const parsed = Parser.parse(value, {
+    ecmaVersion: "latest",
+    sourceType: "module",
+  });
+  // SAFETY: Acorn returns an ESTree program for the configured module grammar.
+  const estree = parsed as Program;
   return {
     type: "mdxjsEsm",
     value,
     data: {
-      estree: Parser.parse(value, {
-        ecmaVersion: "latest",
-        sourceType: "module",
-      }) as unknown as Program,
+      estree,
     },
-  } as unknown as RootContent;
+  };
 }
 
 export function marimoIslandNode({
   elementName = defaultMarimoElementName,
   payload,
   theme = "auto",
-}: {
-  elementName?: string;
-  payload: MarimoPageSerializedCellPayload;
-  theme?: "auto" | "light" | "dark";
-}): RootContent {
-  return {
+}: MarimoIslandNodeOptions): MdxJsxFlowElement {
+  const node: MarimoMdxJsxFlowElement = {
     type: "mdxJsxFlowElement",
     name: elementName,
     attributes: [
@@ -74,5 +85,6 @@ export function marimoIslandNode({
     data: {
       _mdxExplicitJsx: true,
     },
-  } as unknown as RootContent;
+  };
+  return node;
 }

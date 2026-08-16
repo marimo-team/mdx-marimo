@@ -3,8 +3,9 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import {
-  isCompiledMarimoPage,
+  parseCompiledMarimoPage,
   type CompiledMarimoPage,
+  type JsonValue,
   type MarimoPageRequest,
 } from "@marimo-team/mdx-marimo/bridge/protocol";
 import { readCachedResult, writeCachedResult } from "./cache";
@@ -49,7 +50,7 @@ function defaultCacheDir(options: CompileMarimoPageOptions): string | undefined 
   if (options.cacheDir === false) {
     return undefined;
   }
-  if (typeof options.cacheDir === "string") {
+  if (options.cacheDir !== undefined) {
     return options.cacheDir;
   }
   return join(options.cwd ?? process.cwd(), "node_modules", ".cache", "@marimo-team", "mdx-marimo");
@@ -96,8 +97,9 @@ function runCompiler(
         return;
       }
       try {
-        const parsed: unknown = JSON.parse(stdout);
-        if (!isCompiledMarimoPage(parsed)) {
+        const decoded: JsonValue = JSON.parse(stdout);
+        const parsed = parseCompiledMarimoPage(decoded);
+        if (!parsed) {
           throw new Error("compiler returned an invalid marimo page protocol payload");
         }
         resolve(parsed);

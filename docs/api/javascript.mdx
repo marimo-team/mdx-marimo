@@ -166,8 +166,11 @@ import {
 } from "@marimo-team/mdx-marimo/bridge/element";
 import {
   encodePageCellPayload,
+  parseCompiledMarimoPage,
+  parseMarimoPageSerializedCellPayload,
   projectPageCellPayloads,
   type CompiledMarimoPage,
+  type JsonValue,
   type MarimoPageRequest,
 } from "@marimo-team/mdx-marimo/bridge/protocol";
 ```
@@ -177,6 +180,22 @@ serialized element payloads. `bridge/browser` mounts initial HTML, leases
 shared assets, retains replaceable apps, and follows the host theme.
 `bridge/element` creates a custom element for a host name and accepts payloads
 through markup or its `payload` property.
+
+Use `parseCompiledMarimoPage(value)` at compiler JSON boundaries. It returns a
+validated `CompiledMarimoPage` for protocol version 2, or `undefined` when the
+record is malformed or uses another protocol version.
+
+Use `parseMarimoPageSerializedCellPayload(value)` before assigning decoded JSON
+to an element. A full payload has an `app` field, while a reference payload has
+an `appId` field. The parser requires exactly one of these fields and returns
+`undefined` for an invalid record.
+
+```ts
+const value: JsonValue = JSON.parse(source);
+const payload = parseMarimoPageSerializedCellPayload(value);
+
+if (!payload) throw new Error("Invalid marimo page cell payload");
+```
 
 App replacement requires marimo 0.23.16 or newer. The bridge keeps
 full-document navigation when the runtime version cannot guarantee session

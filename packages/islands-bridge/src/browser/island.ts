@@ -16,10 +16,20 @@ export type MountMarimoIslandOptions = {
   themeResolver?: MarimoThemeResolver;
 };
 
+type MarimoThemeBridgeOptions = {
+  theme?: MarimoThemeMode;
+  themeResolver?: MarimoThemeResolver;
+};
+
+type DocumentPlatform = {
+  document?: Document;
+};
+
 const reconnectors = new WeakMap<HTMLElement, () => void>();
 
 export function assertCurrentDocument(host: { ownerDocument: Document }): void {
-  if (typeof document !== "undefined" && host.ownerDocument !== document) {
+  const platform: DocumentPlatform = globalThis;
+  if (platform.document && host.ownerDocument !== platform.document) {
     throw new Error("Marimo islands must be mounted in the current document");
   }
 }
@@ -59,10 +69,10 @@ export function mountMarimoIsland(
     releaseNavigation = retainDocumentNavigation();
   }
 
-  const cleanupTheme = installMarimoThemeBridge(host, {
-    ...(options.theme !== undefined ? { theme: options.theme } : {}),
-    ...(options.themeResolver ? { themeResolver: options.themeResolver } : {}),
-  });
+  const themeOptions: MarimoThemeBridgeOptions = {};
+  if (options.theme !== undefined) themeOptions.theme = options.theme;
+  if (options.themeResolver) themeOptions.themeResolver = options.themeResolver;
+  const cleanupTheme = installMarimoThemeBridge(host, themeOptions);
   const handleActivation = (supportsSoftNavigation: boolean) => {
     if (!active) return;
     if (supportsSoftNavigation) {
@@ -79,11 +89,11 @@ export function mountMarimoIsland(
       const lease = acquireAssets(payload.app, host);
       activateAssets = lease.activate;
       releaseAssets = lease.release;
-      lease.ready.then(handleActivation).catch((error: unknown) => {
-        if (active) renderMarimoIslandError(host, error);
+      lease.ready.then(handleActivation).catch((cause: unknown) => {
+        if (active) renderMarimoIslandError(host, cause);
       });
-    } catch (error: unknown) {
-      renderMarimoIslandError(host, error);
+    } catch (cause: unknown) {
+      renderMarimoIslandError(host, cause);
     }
   } else {
     applyMarimoTheme(host, currentTheme(), options.themeResolver);
@@ -94,8 +104,8 @@ export function mountMarimoIsland(
     refreshMarimoThemeBridge(host);
     void activateAssets?.()
       .then(handleActivation)
-      .catch((error: unknown) => {
-        if (active) renderMarimoIslandError(host, error);
+      .catch((cause: unknown) => {
+        if (active) renderMarimoIslandError(host, cause);
       });
   };
   reconnectors.set(host, reconnect);
@@ -110,14 +120,14 @@ export function mountMarimoIsland(
   };
 }
 
-export function renderMarimoIslandError(host: HTMLElement, error: unknown): void {
+export function renderMarimoIslandError(host: HTMLElement, cause: unknown): void {
   const details = document.createElement("details");
   details.open = true;
   details.className = "marimo-island-error";
   const summary = document.createElement("summary");
   summary.textContent = "Failed to load marimo runtime";
   const pre = document.createElement("pre");
-  pre.textContent = error instanceof Error ? error.message : String(error);
+  pre.textContent = cause instanceof Error ? cause.message : String(cause);
   details.append(summary, pre);
   host.append(details);
 }

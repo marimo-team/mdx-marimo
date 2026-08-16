@@ -1,9 +1,12 @@
 import {
   MARIMO_PAGE_PROTOCOL_VERSION,
+  parseMarimoPageSerializedCellPayload,
   type CompiledMarimoPage,
+  type JsonValue,
   type MarimoCellOptions,
   type MarimoPageCompiler,
   type MarimoPageRequest,
+  type MarimoPageSerializedCellPayload,
 } from "@marimo-team/mdx-marimo/bridge/protocol";
 import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vite-plus/test";
@@ -172,7 +175,7 @@ function compiledPage(request: MarimoPageRequest): CompiledMarimoPage {
 }
 
 function compiledOptions(patch: MarimoPageRequest["cells"][number]["options"]): MarimoCellOptions {
-  return {
+  const options: MarimoCellOptions = {
     language: patch.language ?? "python",
     render: {
       source: false,
@@ -189,10 +192,11 @@ function compiledOptions(patch: MarimoPageRequest["cells"][number]["options"]): 
       unparsable: false,
       ...patch.marimo,
     },
-    ...(patch.sql ? { sql: patch.sql } : {}),
-    ...(patch.name === undefined ? {} : { name: patch.name }),
-    ...(patch.column === undefined ? {} : { column: patch.column }),
   };
+  if (patch.sql) options.sql = patch.sql;
+  if (patch.name !== undefined) options.name = patch.name;
+  if (patch.column !== undefined) options.column = patch.column;
+  return options;
 }
 
 async function transform(
@@ -223,6 +227,10 @@ async function transformResult(
   );
 }
 
-function decodePayload(encoded: string): unknown {
-  return JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+function decodePayload(encoded: string): MarimoPageSerializedCellPayload {
+  const source = Buffer.from(encoded, "base64url").toString("utf8");
+  const decoded: JsonValue = JSON.parse(source);
+  const payload = parseMarimoPageSerializedCellPayload(decoded);
+  if (!payload) throw new Error("Expected an encoded marimo page cell payload");
+  return payload;
 }
