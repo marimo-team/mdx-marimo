@@ -7,6 +7,10 @@ import { installMarimoThemeBridge, refreshMarimoThemeBridge } from "../src/brows
 import { resolveTheme } from "../src/browser/theme-mode";
 
 beforeEach(() => {
+  rootsByParent = new Map();
+  shadowRootOwnerDocument = undefined;
+  shadowHostRoot = undefined;
+  themeElementOptions = {};
   vi.stubGlobal("Document", DocumentFixture);
   vi.stubGlobal("Element", ShadowHostFixture);
   vi.stubGlobal("HTMLElement", ThemeHTMLElementFixture);
@@ -203,8 +207,8 @@ class ThemeElementFixture {
 }
 
 let rootsByParent = new Map<ParentNode, Element[]>();
-let shadowRootOwnerDocument: Document;
-let shadowHostRoot: ShadowRoot;
+let shadowRootOwnerDocument: Document | undefined;
+let shadowHostRoot: ShadowRoot | undefined;
 let themeElementOptions: ThemeElementOptions = {};
 
 class DocumentFixture {
@@ -238,7 +242,7 @@ class ShadowHostFixture {
   readonly nodeType = 1;
   readonly shadowRoot = shadowHostRoot;
 
-  getAttribute(name: string) {
+  getAttribute(name: string): string | null {
     return this.#attributes.get(name) ?? null;
   }
 

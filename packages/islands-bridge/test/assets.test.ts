@@ -1,3 +1,4 @@
+import { runInNewContext } from "node:vm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { MarimoPageRuntime } from "../src/protocol";
 
@@ -7,7 +8,7 @@ type TestAppHost = {
 
 type TestMountConfig = {
   runtime: string;
-  version?: string;
+  version?: string | null;
 };
 
 declare global {
@@ -64,6 +65,58 @@ describe("app asset lifecycle", () => {
     await flushMicrotasks();
   });
 
+  it("adds the runtime version when the mount config version is null", async () => {
+    const mountConfig: TestMountConfig = { runtime: "pyodide", version: null };
+    vi.stubGlobal("window", {
+      __MARIMO_MOUNT_CONFIG__: mountConfig,
+      location: { reload: vi.fn() },
+    });
+    const { acquireAssets } = await import("../src/browser/assets");
+    const lease = acquireAssets(app("configured-app", softModule()), appHost());
+
+    expect(window.__MARIMO_MOUNT_CONFIG__).toBe(mountConfig);
+    expect(mountConfig.version).toBe("0.23.16");
+    expect(await lease.ready).toBe(true);
+    lease.release();
+    await flushMicrotasks();
+  });
+
+  it("preserves a null-prototype mount config dictionary", async () => {
+    const mountConfig: TestMountConfig = { runtime: "pyodide" };
+    Object.setPrototypeOf(mountConfig, null);
+    vi.stubGlobal("window", {
+      __MARIMO_MOUNT_CONFIG__: mountConfig,
+      location: { reload: vi.fn() },
+    });
+    const { acquireAssets } = await import("../src/browser/assets");
+    const lease = acquireAssets(app("configured-app", softModule()), appHost());
+
+    expect(window.__MARIMO_MOUNT_CONFIG__).toBe(mountConfig);
+    expect(mountConfig.version).toBe("0.23.16");
+    expect(await lease.ready).toBe(true);
+    lease.release();
+    await flushMicrotasks();
+  });
+
+  it("preserves a mount config dictionary from another JavaScript realm", async () => {
+    const mountConfig: TestMountConfig = runInNewContext("JSON.parse(source)", {
+      source: JSON.stringify({ runtime: "pyodide" }),
+    });
+    vi.stubGlobal("window", {
+      __MARIMO_MOUNT_CONFIG__: mountConfig,
+      location: { reload: vi.fn() },
+    });
+    const { acquireAssets } = await import("../src/browser/assets");
+    const lease = acquireAssets(app("configured-app", softModule()), appHost());
+
+    expect(Object.getPrototypeOf(mountConfig)).not.toBe(Object.prototype);
+    expect(window.__MARIMO_MOUNT_CONFIG__).toBe(mountConfig);
+    expect(mountConfig.version).toBe("0.23.16");
+    expect(await lease.ready).toBe(true);
+    lease.release();
+    await flushMicrotasks();
+  });
+
   it("activates with a non-writable primitive mount config", async () => {
     const runtimeWindow = { location: { reload: vi.fn() } };
     Object.defineProperty(runtimeWindow, "__MARIMO_MOUNT_CONFIG__", {
@@ -75,6 +128,39 @@ describe("app asset lifecycle", () => {
 
     expect(await lease.ready).toBe(true);
     expect(window.__MARIMO_MOUNT_CONFIG__).toBe("pyodide");
+    lease.release();
+    await flushMicrotasks();
+  });
+
+  it.each([[], new Date(0)])("replaces the non-dictionary mount config %#", async (mountConfig) => {
+    vi.stubGlobal("window", {
+      __MARIMO_MOUNT_CONFIG__: mountConfig,
+      location: { reload: vi.fn() },
+    });
+    const { acquireAssets } = await import("../src/browser/assets");
+    const lease = acquireAssets(app("configured-app", softModule()), appHost());
+
+    expect(window.__MARIMO_MOUNT_CONFIG__).not.toBe(mountConfig);
+    expect(window.__MARIMO_MOUNT_CONFIG__).toEqual({ version: "0.23.16" });
+    expect(Object.hasOwn(mountConfig, "version")).toBe(false);
+    expect(await lease.ready).toBe(true);
+    lease.release();
+    await flushMicrotasks();
+  });
+
+  it("replaces a module namespace mount config", async () => {
+    const mountConfig: object = await import(moduleUrl(`export const runtime = "pyodide";`));
+    vi.stubGlobal("window", {
+      __MARIMO_MOUNT_CONFIG__: mountConfig,
+      location: { reload: vi.fn() },
+    });
+    const { acquireAssets } = await import("../src/browser/assets");
+    const lease = acquireAssets(app("configured-app", softModule()), appHost());
+
+    expect(window.__MARIMO_MOUNT_CONFIG__).not.toBe(mountConfig);
+    expect(window.__MARIMO_MOUNT_CONFIG__).toEqual({ version: "0.23.16" });
+    expect(Object.hasOwn(mountConfig, "version")).toBe(false);
+    expect(await lease.ready).toBe(true);
     lease.release();
     await flushMicrotasks();
   });
@@ -431,6 +517,51 @@ describe("app asset lifecycle", () => {
     await flushMicrotasks();
     expect(assetEvents()).toEqual(["module-loaded"]);
   });
+
+  it.each([
+    [
+      "initialize",
+      `
+        export const initialize = "invalid";
+        export function canReplaceApp() { return true; }
+        export function stopApp() {}
+      `,
+    ],
+    [
+      "canReplaceApp",
+      `
+        export function initialize() {}
+        export const canReplaceApp = "invalid";
+        export function stopApp() {}
+      `,
+    ],
+    [
+      "stopApp",
+      `
+        export function initialize() {}
+        export function canReplaceApp() { return true; }
+        export const stopApp = "invalid";
+      `,
+    ],
+  ] as const)(
+    "reloads before replacing a runtime with a malformed %s export",
+    async (_, exports) => {
+      const { acquireAssets } = await import("../src/browser/assets");
+      const moduleScript = moduleUrl(`
+      globalThis.__marimoAssetEvents.push("module-loaded");
+      ${exports}
+    `);
+      const first = acquireAssets(app("first-app", moduleScript), appHost());
+
+      expect(await first.ready).toBe(false);
+      expect(assetEvents()).toEqual(["module-loaded"]);
+      expect(window.location.reload).not.toHaveBeenCalled();
+
+      const replacement = acquireAssets(app("second-app", moduleScript), appHost());
+      await vi.waitFor(() => expect(window.location.reload).toHaveBeenCalledOnce());
+      await expectPending(replacement.ready);
+    },
+  );
 
   it("requires the safe runtime version for retained handoff", async () => {
     const { acquireAssets, hasConfirmedSoftNavigationAssets } =

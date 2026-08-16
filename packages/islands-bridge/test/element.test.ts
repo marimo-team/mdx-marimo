@@ -294,7 +294,24 @@ describe("defineMarimoIslandElement", () => {
 
     expect(() => {
       Reflect.set(element, "payload", { protocolVersion: 1 });
-    }).toThrowError("Invalid marimo page cell payload");
+    }).toThrowError(new TypeError("Invalid marimo page cell payload"));
+  });
+
+  it("reports invalid markup payloads as type errors", async () => {
+    const constructor = installPayloadElement("marimo-invalid-markup-test");
+    const element = new constructor();
+    element.setAttribute("data-marimo-payload", JSON.stringify({ protocolVersion: 1 }));
+
+    connectElement(element);
+    await flushMicrotasks();
+
+    expect(mountMarimoIsland).not.toHaveBeenCalled();
+    expect(renderMarimoIslandError).toHaveBeenCalledOnce();
+    expect(renderMarimoIslandError.mock.calls[0]?.[1]).toEqual(
+      new TypeError("Invalid marimo page cell payload"),
+    );
+    disconnectElement(element);
+    await flushTasks();
   });
 
   it("reports mount failures through the configured element runtime", async () => {

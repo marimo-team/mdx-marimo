@@ -1,12 +1,6 @@
 import type { MarimoRuntimeAssets, MarimoPageRuntime } from "../protocol";
 
 type MarimoIslandModule = {
-  initialize?: () => Promise<void> | void;
-  canReplaceApp?: () => boolean;
-  stopApp?: (appId?: string) => Promise<void> | void;
-};
-
-type RuntimeModuleNamespace = {
   readonly [Symbol.toStringTag]: "Module";
 };
 
@@ -59,8 +53,12 @@ type MarimoMountConfig = {
   version?: string;
 };
 
+type MarimoMountConfigDictionary = {
+  version?: string | null;
+};
+
 type MarimoMountConfigInput =
-  | MarimoMountConfig
+  | MarimoMountConfigDictionary
   | bigint
   | boolean
   | null
@@ -237,7 +235,7 @@ async function activateApp(
     const activationHosts = hosts;
     try {
       if (!isFirstApp || softNavigation) {
-        await Promise.all(modules.map(async (runtimeModule) => runtimeModule.initialize?.()));
+        await Promise.all(modules.map(initializeRuntimeModule));
       }
     } catch (error) {
       if (softNavigation) await stopAppOrReload(modules);
@@ -327,7 +325,7 @@ async function deactivateApp(activeApp: ActiveApp): Promise<void> {
 
 async function stopAppOrReload(modules: MarimoIslandModule[], appId?: string): Promise<void> {
   try {
-    await Promise.all(modules.map(async (runtimeModule) => runtimeModule.stopApp?.(appId)));
+    await Promise.all(modules.map((runtimeModule) => stopRuntimeModule(runtimeModule, appId)));
   } catch (error) {
     console.error(`Failed to stop marimo app${appId ? ` ${appId}` : ""}`, error);
     return await reloadDocument();
@@ -352,14 +350,48 @@ function cleanupAppState(appId: string, state: AppAssetsState): void {
 
 function supportsSoftNavigation(app: MarimoPageRuntime, modules: MarimoIslandModule[]): boolean {
   if (!hasSafeSessionHandoff(app.assets.version)) return false;
-  const runtimes = modules.filter((runtimeModule) => runtimeModule.initialize);
+  const runtimes = modules.filter(hasRuntimeInitializer);
   return (
     runtimes.length > 0 &&
     runtimes.every(
-      (runtimeModule) =>
-        runtimeModule.canReplaceApp?.() === true && runtimeModule.stopApp !== undefined,
+      (runtimeModule) => canReplaceRuntimeApp(runtimeModule) && hasRuntimeStopper(runtimeModule),
     )
   );
+}
+
+function hasRuntimeInitializer(runtimeModule: MarimoIslandModule): boolean {
+  const initialize: unknown = Object.getOwnPropertyDescriptor(runtimeModule, "initialize")?.value;
+  return initialize instanceof Function;
+}
+
+async function initializeRuntimeModule(runtimeModule: MarimoIslandModule): Promise<void> {
+  const initialize: unknown = Object.getOwnPropertyDescriptor(runtimeModule, "initialize")?.value;
+  if (initialize instanceof Function) {
+    await initialize.call(runtimeModule);
+  }
+}
+
+function canReplaceRuntimeApp(runtimeModule: MarimoIslandModule): boolean {
+  const canReplaceApp: unknown = Object.getOwnPropertyDescriptor(
+    runtimeModule,
+    "canReplaceApp",
+  )?.value;
+  return canReplaceApp instanceof Function && canReplaceApp.call(runtimeModule) === true;
+}
+
+function hasRuntimeStopper(runtimeModule: MarimoIslandModule): boolean {
+  const stopApp: unknown = Object.getOwnPropertyDescriptor(runtimeModule, "stopApp")?.value;
+  return stopApp instanceof Function;
+}
+
+async function stopRuntimeModule(
+  runtimeModule: MarimoIslandModule,
+  appId: string | undefined,
+): Promise<void> {
+  const stopApp: unknown = Object.getOwnPropertyDescriptor(runtimeModule, "stopApp")?.value;
+  if (stopApp instanceof Function) {
+    await stopApp.call(runtimeModule, appId);
+  }
 }
 
 function hasSafeSessionHandoff(version: string | undefined): boolean {
@@ -376,9 +408,9 @@ function hasSafeSessionHandoff(version: string | undefined): boolean {
 function ensureMountConfig(assets: MarimoRuntimeAssets): void {
   if (!assets.version) return;
   try {
-    const mountConfig = window.__MARIMO_MOUNT_CONFIG__;
-    if (isMarimoMountConfig(mountConfig)) {
-      if (mountConfig.version === undefined) {
+    const mountConfig: MarimoMountConfigInput | undefined = window.__MARIMO_MOUNT_CONFIG__;
+    if (isMarimoMountConfigDictionary(mountConfig)) {
+      if (mountConfig.version === undefined || mountConfig.version === null) {
         Reflect.set(mountConfig, "version", assets.version);
       }
     } else {
@@ -389,12 +421,26 @@ function ensureMountConfig(assets: MarimoRuntimeAssets): void {
   }
 }
 
-function isMarimoMountConfig(
+function isMarimoMountConfigDictionary(
   value: MarimoMountConfigInput | undefined,
-): value is MarimoMountConfig {
-  return (
-    value !== null && value !== undefined && Object(value) === value && !(value instanceof Function)
-  );
+): value is MarimoMountConfigDictionary {
+  if (value === undefined || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype === Object.prototype) return true;
+  if (prototype === null) {
+    const brand: unknown = Object.getOwnPropertyDescriptor(value, Symbol.toStringTag)?.value;
+    return brand !== "Module";
+  }
+  if (Object.getPrototypeOf(prototype) !== null) return false;
+  const constructor = Object.getOwnPropertyDescriptor(prototype, "constructor")?.value;
+  if (!constructor || constructor.prototype !== prototype) return false;
+  try {
+    return (
+      Function.prototype.toString.call(constructor) === Function.prototype.toString.call(Object)
+    );
+  } catch {
+    return false;
+  }
 }
 
 function ensureExportContext(notebookCode: string | undefined): void {
@@ -483,26 +529,10 @@ function ensureModule(src: string): Promise<MarimoIslandModule> {
 }
 
 async function importRuntimeModule(href: string): Promise<MarimoIslandModule> {
-  const namespace: RuntimeModuleNamespace = await import(
+  const namespace: MarimoIslandModule = await import(
     /* webpackIgnore: true */
     /* @vite-ignore */
     href
   );
-  if (!isMarimoIslandModule(namespace)) {
-    throw new TypeError(`Invalid marimo runtime module: ${href}`);
-  }
   return namespace;
-}
-
-function isMarimoIslandModule(
-  namespace: RuntimeModuleNamespace,
-): namespace is RuntimeModuleNamespace & MarimoIslandModule {
-  const initialize: unknown = Object.getOwnPropertyDescriptor(namespace, "initialize")?.value;
-  const canReplaceApp: unknown = Object.getOwnPropertyDescriptor(namespace, "canReplaceApp")?.value;
-  const stopApp: unknown = Object.getOwnPropertyDescriptor(namespace, "stopApp")?.value;
-  return (
-    (initialize === undefined || initialize instanceof Function) &&
-    (canReplaceApp === undefined || canReplaceApp instanceof Function) &&
-    (stopApp === undefined || stopApp instanceof Function)
-  );
 }

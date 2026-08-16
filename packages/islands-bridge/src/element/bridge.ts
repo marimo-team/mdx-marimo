@@ -242,11 +242,7 @@ function createMarimoIslandElementConstructor(
     }
 
     set payload(payload: MarimoPageSerializedCellPayload | undefined) {
-      const parsedPayload =
-        payload === undefined ? undefined : parseMarimoPageSerializedCellPayload(payload);
-      if (payload !== undefined && !parsedPayload) {
-        throw new TypeError("Invalid marimo page cell payload");
-      }
+      const parsedPayload = payload === undefined ? undefined : parseElementPayload(payload);
       if (payload === this.#serializedPayload) return;
       if (parsedPayload !== undefined && this.#serializedPayload !== undefined) {
         const parsedCurrentPayload = parseMarimoPageSerializedCellPayload(this.#serializedPayload);
@@ -324,9 +320,7 @@ function createMarimoIslandElementConstructor(
           return;
         }
         const serializedPayload = this.#serializedPayload;
-        if (!parseMarimoPageSerializedCellPayload(serializedPayload)) {
-          throw new TypeError("Invalid marimo page cell payload");
-        }
+        parseElementPayload(serializedPayload);
 
         this.#payload = this.#payload ?? resolvePayload(this.ownerDocument, serializedPayload);
         if (!this.#payload) {
@@ -440,9 +434,13 @@ function readPayload(host: HTMLElement): MarimoPageSerializedCellPayload | undef
   const source = readPayloadSource(host);
   if (!source) return undefined;
   const payload: JsonValue = JSON.parse(source);
+  return parseElementPayload(payload);
+}
+
+function parseElementPayload(payload: JsonValue): MarimoPageSerializedCellPayload {
   const parsed = parseMarimoPageSerializedCellPayload(payload);
   if (parsed) return parsed;
-  throw new Error("Invalid marimo page cell payload");
+  throw new TypeError("Invalid marimo page cell payload");
 }
 
 function resolvePayload(
