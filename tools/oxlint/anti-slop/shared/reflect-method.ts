@@ -1,22 +1,12 @@
-import type { ESTree, Scope, SourceCode, Variable } from "@oxlint/plugins";
+import type { ESTree, SourceCode } from "@oxlint/plugins";
 
-function resolveVariable(
-  sourceCode: SourceCode,
-  identifier: ESTree.IdentifierReference,
-): Variable | null {
-  let scope: Scope | null = sourceCode.getScope(identifier);
-  while (scope !== null) {
-    const variable = scope.set.get(identifier.name);
-    if (variable !== undefined) return variable;
-    scope = scope.upper;
-  }
-  return null;
-}
+import { resolveValueVariable } from "./scope.ts";
+import { staticPropertyName } from "./static-property-name.ts";
 
 function isGlobalReflect(sourceCode: SourceCode, expression: ESTree.Expression): boolean {
   if (expression.type !== "Identifier" || expression.name !== "Reflect") return false;
   if (sourceCode.isGlobalReference(expression)) return true;
-  const variable = resolveVariable(sourceCode, expression);
+  const variable = resolveValueVariable(sourceCode, expression);
   return variable === null || variable.defs.length === 0;
 }
 
@@ -26,10 +16,10 @@ export function isGlobalReflectMethodCall(
   callee: ESTree.Expression,
   methodName: string,
 ): boolean {
-  if (!("property" in callee) || !("object" in callee) || !("computed" in callee)) return false;
-  if (!isGlobalReflect(sourceCode, callee.object)) return false;
-  const property = callee.property;
-  return callee.computed
-    ? property.type === "Literal" && property.value === methodName
-    : property.type === "Identifier" && property.name === methodName;
+  const unwrapped = callee.type === "ChainExpression" ? callee.expression : callee;
+  if (!("property" in unwrapped) || !("object" in unwrapped) || !("computed" in unwrapped)) {
+    return false;
+  }
+  if (!isGlobalReflect(sourceCode, unwrapped.object)) return false;
+  return staticPropertyName(unwrapped.property, unwrapped.computed) === methodName;
 }

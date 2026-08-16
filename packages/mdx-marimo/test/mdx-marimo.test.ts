@@ -10,7 +10,7 @@ import {
   type MarimoPageCompiler,
   type MarimoPageRequest,
   type MarimoPageSerializedCellPayload,
-} from "@marimo-team/mdx-marimo/bridge/protocol";
+} from "../src/bridge/protocol";
 import { remarkMarimo } from "../src/remark";
 
 describe("remarkMarimo", () => {

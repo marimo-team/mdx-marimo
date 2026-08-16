@@ -9,7 +9,7 @@ import {
   type JsonValue,
   type MarimoCellOptions,
   type MarimoPageRequest,
-} from "@marimo-team/mdx-marimo/bridge/protocol";
+} from "../src/bridge/protocol";
 
 const pythonHarness = String.raw`
 import asyncio

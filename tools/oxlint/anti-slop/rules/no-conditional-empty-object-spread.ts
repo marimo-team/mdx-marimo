@@ -1,20 +1,30 @@
 import { defineRule } from "@oxlint/plugins";
 import type { ESTree } from "@oxlint/plugins";
 
-function unwrapParentheses(node: ESTree.Expression): ESTree.Expression {
+function unwrapTransparentExpression(node: ESTree.Expression): ESTree.Expression {
   let current = node;
-  while (current.type === "ParenthesizedExpression") {
-    current = current.expression;
+  while (true) {
+    if (
+      current.type === "ParenthesizedExpression" ||
+      current.type === "TSAsExpression" ||
+      current.type === "TSNonNullExpression" ||
+      current.type === "TSSatisfiesExpression" ||
+      current.type === "TSTypeAssertion"
+    ) {
+      current = current.expression;
+      continue;
+    }
+    return current;
   }
-  return current;
 }
 
 function isEmptyObjectExpression(node: ESTree.Expression): boolean {
-  return node.type === "ObjectExpression" && node.properties.length === 0;
+  const expression = unwrapTransparentExpression(node);
+  return expression.type === "ObjectExpression" && expression.properties.length === 0;
 }
 
 function isConditionalEmptyObjectSpread(node: ESTree.Expression): boolean {
-  const conditional = unwrapParentheses(node);
+  const conditional = unwrapTransparentExpression(node);
   return (
     conditional.type === "ConditionalExpression" &&
     (isEmptyObjectExpression(conditional.consequent) ||

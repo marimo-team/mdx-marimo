@@ -2,15 +2,11 @@ import { defineRule } from "@oxlint/plugins";
 
 import type { ESTree } from "@oxlint/plugins";
 
-function referencedAliasName(type: ESTree.TSType): string | null {
-	if (type.type === "TSParenthesizedType") return referencedAliasName(type.typeAnnotation);
-	if (type.type !== "TSTypeReference" || type.typeName.type !== "Identifier") return null;
-	return type.typeArguments === null ||
-		type.typeArguments === undefined ||
-		type.typeArguments.params.length === 0
-		? type.typeName.name
-		: null;
-}
+import {
+	resolveTypeAliasApplication,
+	resolveTypeSubstitution,
+	type TypeSubstitutions,
+} from "../shared/scope.ts";
 
 /** Ban named aliases that merely conceal TypeScript's unknown top type. */
 export const noUnknownTypeAliasesRule = defineRule({
@@ -26,44 +22,50 @@ export const noUnknownTypeAliasesRule = defineRule({
 		},
 	},
 	createOnce(context) {
-		const aliases = new Map<string, ESTree.TSTypeAliasDeclaration>();
-
-		const resolvesToUnknown = (type: ESTree.TSType, visited = new Set<string>()): boolean => {
+		const resolvesToUnknown = (
+			type: ESTree.TSType,
+			substitutions: TypeSubstitutions = new Map(),
+			visited = new Set<ESTree.TSTypeAliasDeclaration>(),
+			resolvingParameters = new Set<ESTree.TSTypeParameter>(),
+		): boolean => {
 			if (type.type === "TSUnknownKeyword") return true;
 			if (type.type === "TSParenthesizedType")
-				return resolvesToUnknown(type.typeAnnotation, visited);
-			const name = referencedAliasName(type);
-			if (name === null || visited.has(name)) return false;
-			const alias = aliases.get(name);
-			if (
-				alias === undefined ||
-				(alias.typeParameters !== null && alias.typeParameters !== undefined)
-			) {
+				return resolvesToUnknown(type.typeAnnotation, substitutions, visited, resolvingParameters);
+			if (type.type === "TSUnionType") {
+				return type.types.some((member) =>
+					resolvesToUnknown(member, substitutions, visited, resolvingParameters),
+				);
+			}
+			if (type.type !== "TSTypeReference") return false;
+			const substitution = resolveTypeSubstitution(context.sourceCode, type, substitutions);
+			if (substitution !== null) {
+				if (resolvingParameters.has(substitution.parameter)) return false;
+				const nextResolving = new Set(resolvingParameters);
+				nextResolving.add(substitution.parameter);
+				return resolvesToUnknown(substitution.type, substitutions, visited, nextResolving);
+			}
+			const application = resolveTypeAliasApplication(context.sourceCode, type, substitutions);
+			if (application === null || visited.has(application.alias)) {
 				return false;
 			}
 			const nextVisited = new Set(visited);
-			nextVisited.add(name);
-			return resolvesToUnknown(alias.typeAnnotation, nextVisited);
+			nextVisited.add(application.alias);
+			return resolvesToUnknown(
+				application.alias.typeAnnotation,
+				application.substitutions,
+				nextVisited,
+				resolvingParameters,
+			);
 		};
 
 		return {
-			Program(node) {
-				aliases.clear();
-				for (const statement of node.body) {
-					const declaration =
-						statement.type === "ExportNamedDeclaration" ? statement.declaration : statement;
-					if (declaration?.type === "TSTypeAliasDeclaration") {
-						aliases.set(declaration.id.name, declaration);
-					}
-				}
-				for (const alias of aliases.values()) {
-					if (!resolvesToUnknown(alias.typeAnnotation, new Set([alias.id.name]))) continue;
-					context.report({
-						node: alias.id,
-						messageId: "unknownAlias",
-						data: { alias: alias.id.name },
-					});
-				}
+			TSTypeAliasDeclaration(alias) {
+				if (!resolvesToUnknown(alias.typeAnnotation, new Map(), new Set([alias]))) return;
+				context.report({
+					node: alias.id,
+					messageId: "unknownAlias",
+					data: { alias: alias.id.name },
+				});
 			},
 		};
 	},

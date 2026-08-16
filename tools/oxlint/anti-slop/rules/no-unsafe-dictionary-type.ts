@@ -6,6 +6,7 @@ import {
 	createTypeEnvironment,
 	type TypeEnvironment,
 } from "../shared/dictionary-types.ts";
+import { resolveTypeAlias } from "../shared/scope.ts";
 
 import type { ESTree } from "@oxlint/plugins";
 
@@ -53,10 +54,6 @@ function isTypeNode(node: ESTree.Node): node is ESTree.TSType {
 	return typeNodeKinds.has(node.type);
 }
 
-function typeReferenceName(type: ESTree.TSTypeReference): string | null {
-	return type.typeName.type === "Identifier" ? type.typeName.name : null;
-}
-
 function isInsideTypeAliasDeclaration(node: ESTree.Node): boolean {
 	let current: ESTree.Node | null = node.parent;
 	while (current !== null && current.type !== "Program") {
@@ -68,8 +65,12 @@ function isInsideTypeAliasDeclaration(node: ESTree.Node): boolean {
 
 function isPlainAliasConsumerUse(node: ESTree.TSType, environment: TypeEnvironment): boolean {
 	if (node.type !== "TSTypeReference" || node.typeArguments?.params.length) return false;
-	const name = typeReferenceName(node);
-	return name !== null && environment.aliases.has(name) && !isInsideTypeAliasDeclaration(node);
+	const alias = resolveTypeAlias(environment.sourceCode, node);
+	return (
+		alias !== null &&
+		(alias.typeParameters === null || alias.typeParameters === undefined) &&
+		!isInsideTypeAliasDeclaration(node)
+	);
 }
 
 function shouldReportType(node: ESTree.TSType, environment: TypeEnvironment): boolean {
@@ -110,8 +111,8 @@ export const noUnsafeDictionaryTypeRule = defineRule({
 		};
 
 		return {
-			Program(node) {
-				environment = createTypeEnvironment(node);
+			Program() {
+				environment = createTypeEnvironment(context.sourceCode);
 			},
 			TSTypeReference: reportIfUnsafe,
 			TSTypeLiteral: reportIfUnsafe,

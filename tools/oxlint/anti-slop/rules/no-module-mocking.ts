@@ -1,21 +1,11 @@
 import { defineRule } from "@oxlint/plugins";
 
-import type { ESTree, Scope, SourceCode, Variable } from "@oxlint/plugins";
+import type { ESTree, SourceCode } from "@oxlint/plugins";
+
+import { resolveValueVariable } from "../shared/scope.ts";
+import { staticPropertyName } from "../shared/static-property-name.ts";
 
 const moduleMockMethods = new Set(["doMock", "mock", "unstable_mockModule"]);
-
-function resolveVariable(
-  sourceCode: SourceCode,
-  identifier: ESTree.IdentifierReference,
-): Variable | null {
-  let scope: Scope | null = sourceCode.getScope(identifier);
-  while (scope !== null) {
-    const variable = scope.set.get(identifier.name);
-    if (variable !== undefined) return variable;
-    scope = scope.upper;
-  }
-  return null;
-}
 
 function importedName(node: ESTree.Node): string | null {
   if (node.type !== "ImportSpecifier") return null;
@@ -34,7 +24,7 @@ function isTestFrameworkObject(
     return true;
   }
 
-  const variable = resolveVariable(sourceCode, expression);
+  const variable = resolveValueVariable(sourceCode, expression);
   if (variable === null || variable.defs.length === 0) {
     return expression.name === "vi" || expression.name === "jest";
   }
@@ -44,24 +34,20 @@ function isTestFrameworkObject(
     }
     const source = definition.parent.source.value;
     const name = importedName(definition.node);
-    return (source === "vitest" && name === "vi") || (source === "@jest/globals" && name === "jest");
+    return (
+      ((source === "vitest" || source === "vite-plus/test") && name === "vi") ||
+      (source === "@jest/globals" && name === "jest")
+    );
   });
 }
 
 function moduleMockCall(sourceCode: SourceCode, callee: ESTree.Expression): boolean {
-  if (!("property" in callee) || !("object" in callee) || !("computed" in callee)) return false;
-  if (!isTestFrameworkObject(sourceCode, callee.object)) return false;
-  const property = callee.property;
-  const method = callee.computed
-    ? property.type === "Literal" &&
-      (property.value === "doMock" ||
-        property.value === "mock" ||
-        property.value === "unstable_mockModule")
-      ? property.value
-      : null
-    : property.type === "Identifier"
-      ? property.name
-      : null;
+  const unwrapped = callee.type === "ChainExpression" ? callee.expression : callee;
+  if (!("property" in unwrapped) || !("object" in unwrapped) || !("computed" in unwrapped)) {
+    return false;
+  }
+  if (!isTestFrameworkObject(sourceCode, unwrapped.object)) return false;
+  const method = staticPropertyName(unwrapped.property, unwrapped.computed);
   return method !== null && moduleMockMethods.has(method);
 }
 

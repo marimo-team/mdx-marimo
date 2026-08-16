@@ -2,7 +2,12 @@ import { defineRule } from "@oxlint/plugins";
 
 import type { ESTree } from "@oxlint/plugins";
 
-import { lexicalTypeParameterNames } from "../shared/lexical-type-parameters.ts";
+import {
+  isGlobalTypeReference,
+  resolveTypeAliasApplication,
+  resolveTypeSubstitution,
+  type TypeSubstitutions,
+} from "../shared/scope.ts";
 
 type FunctionWithReturnType =
   | ESTree.ArrowFunctionExpression
@@ -12,16 +17,6 @@ type FunctionWithReturnType =
   | ESTree.TSConstructorType
   | ESTree.TSFunctionType
   | ESTree.TSMethodSignature;
-
-function referencedAliasName(type: ESTree.TSType): string | null {
-  if (type.type === "TSParenthesizedType") return referencedAliasName(type.typeAnnotation);
-  if (type.type !== "TSTypeReference" || type.typeName.type !== "Identifier") return null;
-  return type.typeArguments === null ||
-    type.typeArguments === undefined ||
-    type.typeArguments.params.length === 0
-    ? type.typeName.name
-    : null;
-}
 
 /** Ban function contracts that return unknown instead of a parsed domain type. */
 export const noUnknownReturnsRule = defineRule({
@@ -37,69 +32,61 @@ export const noUnknownReturnsRule = defineRule({
     },
   },
   createOnce(context) {
-    const aliases = new Map<string, ESTree.TSTypeAliasDeclaration>();
-
     const resolvesToUnknown = (
       type: ESTree.TSType,
-      shadowedAliases: ReadonlySet<string>,
-      visited = new Set<string>(),
+      substitutions: TypeSubstitutions = new Map(),
+      visited = new Set<ESTree.TSTypeAliasDeclaration>(),
+      resolvingParameters = new Set<ESTree.TSTypeParameter>(),
     ): boolean => {
       if (type.type === "TSUnknownKeyword") return true;
       if (type.type === "TSParenthesizedType") {
-        return resolvesToUnknown(type.typeAnnotation, shadowedAliases, visited);
+        return resolvesToUnknown(type.typeAnnotation, substitutions, visited, resolvingParameters);
       }
       if (type.type === "TSUnionType") {
         return type.types.some((member) =>
-          resolvesToUnknown(member, shadowedAliases, visited),
+          resolvesToUnknown(member, substitutions, visited, resolvingParameters),
         );
       }
+      if (type.type !== "TSTypeReference") return false;
+      const substitution = resolveTypeSubstitution(context.sourceCode, type, substitutions);
+      if (substitution !== null) {
+        if (resolvingParameters.has(substitution.parameter)) return false;
+        const nextResolving = new Set(resolvingParameters);
+        nextResolving.add(substitution.parameter);
+        return resolvesToUnknown(substitution.type, substitutions, visited, nextResolving);
+      }
       if (
-        type.type === "TSTypeReference" &&
-        type.typeName.type === "Identifier" &&
-        (type.typeName.name === "Promise" || type.typeName.name === "PromiseLike")
+        isGlobalTypeReference(context.sourceCode, type, "Promise") ||
+        isGlobalTypeReference(context.sourceCode, type, "PromiseLike")
       ) {
         const value = type.typeArguments?.params[0];
-        return value !== undefined && resolvesToUnknown(value, shadowedAliases, visited);
+        return (
+          value !== undefined &&
+          resolvesToUnknown(value, substitutions, visited, resolvingParameters)
+        );
       }
-      const name = referencedAliasName(type);
-      if (name === null || visited.has(name) || shadowedAliases.has(name)) return false;
-      const alias = aliases.get(name);
-      if (
-        alias === undefined ||
-        (alias.typeParameters !== null && alias.typeParameters !== undefined)
-      ) {
+      const application = resolveTypeAliasApplication(context.sourceCode, type, substitutions);
+      if (application === null || visited.has(application.alias)) {
         return false;
       }
       const nextVisited = new Set(visited);
-      nextVisited.add(name);
-      return resolvesToUnknown(alias.typeAnnotation, shadowedAliases, nextVisited);
+      nextVisited.add(application.alias);
+      return resolvesToUnknown(
+        application.alias.typeAnnotation,
+        application.substitutions,
+        nextVisited,
+        resolvingParameters,
+      );
     };
 
     const checkReturnType = (node: FunctionWithReturnType) => {
       const annotation = node.returnType;
       if (annotation === null || annotation === undefined) return;
-      if (
-        !resolvesToUnknown(
-          annotation.typeAnnotation,
-          lexicalTypeParameterNames(node, context.sourceCode.visitorKeys),
-        )
-      ) {
-        return;
-      }
+      if (!resolvesToUnknown(annotation.typeAnnotation)) return;
       context.report({ node: annotation.typeAnnotation, messageId: "unknownReturn" });
     };
 
     return {
-      Program(node) {
-        aliases.clear();
-        for (const statement of node.body) {
-          const declaration =
-            statement.type === "ExportNamedDeclaration" ? statement.declaration : statement;
-          if (declaration?.type === "TSTypeAliasDeclaration") {
-            aliases.set(declaration.id.name, declaration);
-          }
-        }
-      },
       ArrowFunctionExpression: checkReturnType,
       FunctionDeclaration: checkReturnType,
       FunctionExpression: checkReturnType,

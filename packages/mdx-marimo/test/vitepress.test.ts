@@ -7,7 +7,7 @@ import {
   type MarimoPageCompiler,
   type MarimoPageRequest,
   type MarimoPageSerializedCellPayload,
-} from "@marimo-team/mdx-marimo/bridge/protocol";
+} from "../src/bridge/protocol";
 import { Buffer } from "node:buffer";
 import { describe, expect, it } from "vite-plus/test";
 import { marimoVitePress } from "../src/adapters/vitepress";

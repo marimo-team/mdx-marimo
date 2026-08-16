@@ -7,8 +7,9 @@ import {
 	type TypeEnvironment,
 	type WideningTarget,
 } from "../shared/dictionary-types.ts";
+import { resolveValueVariable } from "../shared/scope.ts";
 
-import type { ESTree, Scope, SourceCode, Variable } from "@oxlint/plugins";
+import type { ESTree, SourceCode, Variable } from "@oxlint/plugins";
 
 type FunctionExpression = ESTree.ArrowFunctionExpression | ESTree.Function;
 
@@ -24,19 +25,6 @@ function unwrapExpression(expression: ESTree.Expression): ESTree.Expression {
 		current = current.expression;
 	}
 	return current;
-}
-
-function resolveVariable(
-	sourceCode: SourceCode,
-	identifier: ESTree.IdentifierReference,
-): Variable | null {
-	let scope: Scope | null = sourceCode.getScope(identifier);
-	while (scope !== null) {
-		const variable = scope.set.get(identifier.name);
-		if (variable !== undefined) return variable;
-		scope = scope.upper;
-	}
-	return null;
 }
 
 function variableDeclarator(variable: Variable): ESTree.VariableDeclarator | null {
@@ -63,7 +51,7 @@ function hasKnownEvidence(
 	if (isKnownEvidenceExpression(expression)) return true;
 	const unwrapped = unwrapExpression(expression);
 	if (unwrapped.type !== "Identifier") return false;
-	const variable = resolveVariable(sourceCode, unwrapped);
+	const variable = resolveValueVariable(sourceCode, unwrapped);
 	if (variable === null || visitedVariables.has(variable)) return false;
 	const declarator = variableDeclarator(variable);
 	if (
@@ -152,10 +140,7 @@ export const noKnownValueWideningRule = defineRule({
 			subject: string,
 		) => {
 			if (destination === null) return;
-			if (
-				isDictionaryAccumulatorTarget(destination) &&
-				isEmptyObjectExpression(expression)
-			) {
+			if (isDictionaryAccumulatorTarget(destination) && isEmptyObjectExpression(expression)) {
 				return;
 			}
 			if (!hasKnownEvidence(context.sourceCode, expression)) return;
@@ -170,8 +155,8 @@ export const noKnownValueWideningRule = defineRule({
 			environment === null ? null : annotationTarget(annotation, environment);
 
 		return {
-			Program(node) {
-				environment = createTypeEnvironment(node);
+			Program() {
+				environment = createTypeEnvironment(context.sourceCode);
 			},
 			VariableDeclarator(node) {
 				if (node.init === null || node.id.type !== "Identifier") return;
@@ -199,7 +184,7 @@ export const noKnownValueWideningRule = defineRule({
 			},
 			AssignmentExpression(node) {
 				if (node.operator !== "=" || node.left.type !== "Identifier") return;
-				const variable = resolveVariable(context.sourceCode, node.left);
+				const variable = resolveValueVariable(context.sourceCode, node.left);
 				if (variable === null) return;
 				const declarator = variableDeclarator(variable);
 				if (declarator === null || declarator.id.type !== "Identifier") return;

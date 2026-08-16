@@ -1,19 +1,23 @@
 import { defineConfig } from "vite-plus";
 
+const agentToolIgnorePatterns = [
+  ".agent/**",
+  ".agents/**",
+  ".claude/**",
+  ".codex/**",
+  ".continue/**",
+  ".cursor/**",
+  ".gemini/**",
+  ".opencode/**",
+  ".pi/**",
+  ".roo/**",
+  ".windsurf/**",
+] as const;
+
 export default defineConfig({
   fmt: {
     ignorePatterns: [
-      ".agent/**",
-      ".agents/**",
-      ".claude/**",
-      ".codex/**",
-      ".continue/**",
-      ".cursor/**",
-      ".gemini/**",
-      ".opencode/**",
-      ".pi/**",
-      ".roo/**",
-      ".windsurf/**",
+      ...agentToolIgnorePatterns,
       "apps/docs/.next/**",
       "apps/docs/.output/**",
       "apps/docs/.source/**",
@@ -32,17 +36,7 @@ export default defineConfig({
   },
   lint: {
     ignorePatterns: [
-      ".agent/**",
-      ".agents/**",
-      ".claude/**",
-      ".codex/**",
-      ".continue/**",
-      ".cursor/**",
-      ".gemini/**",
-      ".opencode/**",
-      ".pi/**",
-      ".roo/**",
-      ".windsurf/**",
+      ...agentToolIgnorePatterns,
       "apps/docs/.output/**",
       "apps/docs/.source/**",
       "apps/docs/src/routeTree.gen.ts",
@@ -69,7 +63,7 @@ export default defineConfig({
       "anti-slop/no-reflect-apply": "error",
       "anti-slop/no-reflect-get": "error",
       "anti-slop/no-runtime-typeof": "error",
-      "anti-slop/no-shape-in-symbol-names": "error",
+      "anti-slop/no-structural-placeholder-names": "error",
       "anti-slop/no-unknown-parameters": "error",
       "anti-slop/no-unknown-returns": "error",
       "anti-slop/no-unknown-type-aliases": "error",
