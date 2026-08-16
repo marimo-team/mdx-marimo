@@ -1,10 +1,17 @@
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   applyMarimoShadowTheme,
   installMarimoShadowThemeBridge,
 } from "../src/browser/shadow-roots";
 import { installMarimoThemeBridge, refreshMarimoThemeBridge } from "../src/browser/theme";
 import { resolveTheme } from "../src/browser/theme-mode";
+
+beforeEach(() => {
+  vi.stubGlobal("Document", DocumentFixture);
+  vi.stubGlobal("Element", ShadowHostFixture);
+  vi.stubGlobal("HTMLElement", ThemeHTMLElementFixture);
+  vi.stubGlobal("ShadowRoot", ShadowRootFixture);
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -84,7 +91,7 @@ describe("automatic island theme", () => {
     refreshMarimoThemeBridge(host);
 
     expect(host.dataset.marimoTheme).toBe("dark");
-    expect(observed).toContain(darkParent);
+    expect(observed.includes(darkParent)).toBe(true);
     cleanup();
   });
 
@@ -118,7 +125,6 @@ describe("automatic island theme", () => {
     rootsByParent.set(firstRoot, []);
     rootsByParent.set(secondRoot, []);
 
-    vi.stubGlobal("HTMLElement", class {});
     vi.stubGlobal(
       "MutationObserver",
       class {
@@ -161,63 +167,6 @@ class TestObserver {
   constructor(readonly callback: () => void) {}
 }
 
-function shadowDocument(rootsByParent: Map<ParentNode, Element[]>): Document {
-  vi.stubGlobal(
-    "Document",
-    class {
-      createElement() {
-        return { id: "", textContent: "" };
-      }
-
-      createTreeWalker(root: ParentNode) {
-        const elements = rootsByParent.get(root) ?? [];
-        let index = 0;
-        return { nextNode: () => elements[index++] ?? null };
-      }
-    },
-  );
-  return new Document();
-}
-
-function testShadowRoot(ownerDocument: Document): ShadowRoot {
-  vi.stubGlobal(
-    "ShadowRoot",
-    class {
-      readonly ownerDocument = ownerDocument;
-
-      append() {}
-      querySelector() {
-        return null;
-      }
-      querySelectorAll() {
-        return [];
-      }
-    },
-  );
-  return new ShadowRoot();
-}
-
-function testShadowHost(root: ShadowRoot): Element {
-  const attributes = new Map<string, string>();
-  vi.stubGlobal(
-    "Element",
-    class {
-      readonly classList = { add: () => {}, remove: () => {} };
-      readonly nodeType = 1;
-      readonly shadowRoot = root;
-
-      getAttribute(name: string) {
-        return attributes.get(name) ?? null;
-      }
-
-      setAttribute(name: string, value: string): void {
-        attributes.set(name, value);
-      }
-    },
-  );
-  return new Element();
-}
-
 type ThemeElementOptions = {
   attributes?: Iterable<readonly [string, string]>;
   classes?: string[];
@@ -253,15 +202,74 @@ class ThemeElementFixture {
   }
 }
 
+let rootsByParent = new Map<ParentNode, Element[]>();
+let shadowRootOwnerDocument: Document;
+let shadowHostRoot: ShadowRoot;
+let themeElementOptions: ThemeElementOptions = {};
+
+class DocumentFixture {
+  createElement() {
+    return { id: "", textContent: "" };
+  }
+
+  createTreeWalker(root: ParentNode) {
+    const elements = rootsByParent.get(root) ?? [];
+    let index = 0;
+    return { nextNode: () => elements[index++] ?? null };
+  }
+}
+
+class ShadowRootFixture {
+  readonly ownerDocument = shadowRootOwnerDocument;
+
+  append() {}
+  querySelector() {
+    return null;
+  }
+  querySelectorAll() {
+    return [];
+  }
+}
+
+class ShadowHostFixture {
+  readonly #attributes = new Map<string, string>();
+
+  readonly classList = { add: () => {}, remove: () => {} };
+  readonly nodeType = 1;
+  readonly shadowRoot = shadowHostRoot;
+
+  getAttribute(name: string) {
+    return this.#attributes.get(name) ?? null;
+  }
+
+  setAttribute(name: string, value: string): void {
+    this.#attributes.set(name, value);
+  }
+}
+
+class ThemeHTMLElementFixture extends ThemeElementFixture {
+  constructor() {
+    super(themeElementOptions);
+  }
+}
+
+function shadowDocument(documentRoots: Map<ParentNode, Element[]>): Document {
+  rootsByParent = documentRoots;
+  return new Document();
+}
+
+function testShadowRoot(ownerDocument: Document): ShadowRoot {
+  shadowRootOwnerDocument = ownerDocument;
+  return new ShadowRoot();
+}
+
+function testShadowHost(root: ShadowRoot): Element {
+  shadowHostRoot = root;
+  return new Element();
+}
+
 function themeElement(options: ThemeElementOptions = {}): HTMLElement {
-  vi.stubGlobal(
-    "HTMLElement",
-    class extends ThemeElementFixture {
-      constructor() {
-        super(options);
-      }
-    },
-  );
+  themeElementOptions = options;
   return new HTMLElement();
 }
 

@@ -5,8 +5,14 @@ type TestAppHost = {
   isConnected: boolean;
 };
 
+type TestMountConfig = {
+  runtime: string;
+  version?: string;
+};
+
 declare global {
   var __marimoAssetEvents: string[];
+  var __marimoRuntimeThis: object | undefined;
 }
 
 let moduleId = 0;
@@ -25,6 +31,117 @@ afterEach(() => {
 });
 
 describe("app asset lifecycle", () => {
+  it.each([null, "invalid", 1, false])(
+    "replaces the non-object mount config %j",
+    async (mountConfig) => {
+      vi.stubGlobal("window", {
+        __MARIMO_MOUNT_CONFIG__: mountConfig,
+        location: { reload: vi.fn() },
+      });
+      const { acquireAssets } = await import("../src/browser/assets");
+      const lease = acquireAssets(app("configured-app", softModule()), appHost());
+
+      expect(window.__MARIMO_MOUNT_CONFIG__).toEqual({ version: "0.23.16" });
+      expect(await lease.ready).toBe(true);
+      lease.release();
+      await flushMicrotasks();
+    },
+  );
+
+  it("adds the runtime version to the existing mount config", async () => {
+    const mountConfig: TestMountConfig = { runtime: "pyodide" };
+    vi.stubGlobal("window", {
+      __MARIMO_MOUNT_CONFIG__: mountConfig,
+      location: { reload: vi.fn() },
+    });
+    const { acquireAssets } = await import("../src/browser/assets");
+    const lease = acquireAssets(app("configured-app", softModule()), appHost());
+
+    expect(window.__MARIMO_MOUNT_CONFIG__).toBe(mountConfig);
+    expect(mountConfig).toEqual({ runtime: "pyodide", version: "0.23.16" });
+    expect(await lease.ready).toBe(true);
+    lease.release();
+    await flushMicrotasks();
+  });
+
+  it("activates with a non-writable primitive mount config", async () => {
+    const runtimeWindow = { location: { reload: vi.fn() } };
+    Object.defineProperty(runtimeWindow, "__MARIMO_MOUNT_CONFIG__", {
+      value: "pyodide",
+    });
+    vi.stubGlobal("window", runtimeWindow);
+    const { acquireAssets } = await import("../src/browser/assets");
+    const lease = acquireAssets(app("configured-app", softModule()), appHost());
+
+    expect(await lease.ready).toBe(true);
+    expect(window.__MARIMO_MOUNT_CONFIG__).toBe("pyodide");
+    lease.release();
+    await flushMicrotasks();
+  });
+
+  it("activates with a non-extensible mount config", async () => {
+    const mountConfig = Object.preventExtensions<TestMountConfig>({ runtime: "pyodide" });
+    vi.stubGlobal("window", {
+      __MARIMO_MOUNT_CONFIG__: mountConfig,
+      location: { reload: vi.fn() },
+    });
+    const { acquireAssets } = await import("../src/browser/assets");
+    const lease = acquireAssets(app("configured-app", softModule()), appHost());
+
+    expect(await lease.ready).toBe(true);
+    expect(window.__MARIMO_MOUNT_CONFIG__).toBe(mountConfig);
+    expect(mountConfig).toEqual({ runtime: "pyodide" });
+    lease.release();
+    await flushMicrotasks();
+  });
+
+  it("activates with a non-writable mount config version", async () => {
+    const mountConfig: TestMountConfig = { runtime: "pyodide" };
+    Object.defineProperty(mountConfig, "version", { value: undefined });
+    vi.stubGlobal("window", {
+      __MARIMO_MOUNT_CONFIG__: mountConfig,
+      location: { reload: vi.fn() },
+    });
+    const { acquireAssets } = await import("../src/browser/assets");
+    const lease = acquireAssets(app("configured-app", softModule()), appHost());
+
+    expect(await lease.ready).toBe(true);
+    expect(window.__MARIMO_MOUNT_CONFIG__).toBe(mountConfig);
+    expect(mountConfig.version).toBeUndefined();
+    lease.release();
+    await flushMicrotasks();
+  });
+
+  it("preserves the runtime module namespace and method receiver", async () => {
+    const { acquireAssets } = await import("../src/browser/assets");
+    const moduleScript = moduleUrl(`
+      export default "runtime-default";
+      export function canReplaceApp() {
+        return this.default === "runtime-default";
+      }
+      export function initialize() {
+        globalThis.__marimoRuntimeThis = this;
+        globalThis.__marimoAssetEvents.push("initialize:" + this.default);
+      }
+      export function stopApp(appId) {
+        globalThis.__marimoAssetEvents.push("stop:" + this.default + ":" + appId);
+      }
+    `);
+    const namespace: object = await import(moduleScript);
+    const lease = acquireAssets(app("namespace-app", moduleScript), appHost());
+
+    expect(await lease.ready).toBe(true);
+    expect(globalThis.__marimoRuntimeThis).toBe(namespace);
+    expect(assetEvents()).toEqual(["initialize:runtime-default"]);
+
+    lease.release();
+    await flushMicrotasks();
+    expect(assetEvents()).toEqual([
+      "initialize:runtime-default",
+      "stop:runtime-default:namespace-app",
+    ]);
+  });
+
   it("retains an app until its final host lease is released", async () => {
     vi.stubGlobal("__marimoCanReplaceApp", true);
     const { acquireAssets, hasConfirmedSoftNavigationAssets } =

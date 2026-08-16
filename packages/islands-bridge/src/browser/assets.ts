@@ -6,6 +6,10 @@ type MarimoIslandModule = {
   stopApp?: (appId?: string) => Promise<void> | void;
 };
 
+type RuntimeModuleNamespace = {
+  readonly [Symbol.toStringTag]: "Module";
+};
+
 type MarimoAssetsLease = {
   activate: () => Promise<boolean>;
   ready: Promise<boolean>;
@@ -54,6 +58,15 @@ type RuntimeDocumentState = {
 type MarimoMountConfig = {
   version?: string;
 };
+
+type MarimoMountConfigInput =
+  | MarimoMountConfig
+  | bigint
+  | boolean
+  | null
+  | number
+  | string
+  | symbol;
 
 type MarimoExportContext = {
   trusted: true;
@@ -362,12 +375,26 @@ function hasSafeSessionHandoff(version: string | undefined): boolean {
 
 function ensureMountConfig(assets: MarimoRuntimeAssets): void {
   if (!assets.version) return;
-  const mountConfig = window.__MARIMO_MOUNT_CONFIG__;
-  if (mountConfig !== undefined) {
-    mountConfig.version ??= assets.version;
-  } else {
-    window.__MARIMO_MOUNT_CONFIG__ = { version: assets.version };
+  try {
+    const mountConfig = window.__MARIMO_MOUNT_CONFIG__;
+    if (isMarimoMountConfig(mountConfig)) {
+      if (mountConfig.version === undefined) {
+        Reflect.set(mountConfig, "version", assets.version);
+      }
+    } else {
+      Reflect.set(window, "__MARIMO_MOUNT_CONFIG__", { version: assets.version });
+    }
+  } catch {
+    return;
   }
+}
+
+function isMarimoMountConfig(
+  value: MarimoMountConfigInput | undefined,
+): value is MarimoMountConfig {
+  return (
+    value !== null && value !== undefined && Object(value) === value && !(value instanceof Function)
+  );
 }
 
 function ensureExportContext(notebookCode: string | undefined): void {
@@ -456,27 +483,26 @@ function ensureModule(src: string): Promise<MarimoIslandModule> {
 }
 
 async function importRuntimeModule(href: string): Promise<MarimoIslandModule> {
-  const namespace = await import(
+  const namespace: RuntimeModuleNamespace = await import(
     /* webpackIgnore: true */
     /* @vite-ignore */
     href
   );
-  const runtimeModule: MarimoIslandModule = {};
+  if (!isMarimoIslandModule(namespace)) {
+    throw new TypeError(`Invalid marimo runtime module: ${href}`);
+  }
+  return namespace;
+}
+
+function isMarimoIslandModule(
+  namespace: RuntimeModuleNamespace,
+): namespace is RuntimeModuleNamespace & MarimoIslandModule {
   const initialize: unknown = Object.getOwnPropertyDescriptor(namespace, "initialize")?.value;
-  if (initialize instanceof Function) {
-    runtimeModule.initialize = async () => {
-      await initialize();
-    };
-  }
   const canReplaceApp: unknown = Object.getOwnPropertyDescriptor(namespace, "canReplaceApp")?.value;
-  if (canReplaceApp instanceof Function) {
-    runtimeModule.canReplaceApp = () => canReplaceApp() === true;
-  }
   const stopApp: unknown = Object.getOwnPropertyDescriptor(namespace, "stopApp")?.value;
-  if (stopApp instanceof Function) {
-    runtimeModule.stopApp = async (appId) => {
-      await stopApp(appId);
-    };
-  }
-  return runtimeModule;
+  return (
+    (initialize === undefined || initialize instanceof Function) &&
+    (canReplaceApp === undefined || canReplaceApp instanceof Function) &&
+    (stopApp === undefined || stopApp instanceof Function)
+  );
 }

@@ -429,20 +429,17 @@ function parseDiagnostic(value: JsonValue): MarimoDiagnostic | undefined {
 function parseJsonValue(value: JsonValue): JsonValue | undefined {
   if (value === null || isString(value) || isBoolean(value)) return value;
   if (isFiniteNumber(value)) return value;
-  if (Array.isArray(value)) return parseArray(value, parseJsonValue);
-  if (!isJsonRecord(value)) return undefined;
-  const record: JsonRecord = {};
-  for (const [key, entry] of Object.entries(value)) {
-    const parsed = parseJsonValue(entry);
-    if (parsed === undefined) return undefined;
-    Object.defineProperty(record, key, {
-      configurable: true,
-      enumerable: true,
-      value: parsed,
-      writable: true,
-    });
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      if (parseJsonValue(entry) === undefined) return undefined;
+    }
+    return value;
   }
-  return record;
+  if (!isJsonRecord(value)) return undefined;
+  for (const entry of Object.values(value)) {
+    if (parseJsonValue(entry) === undefined) return undefined;
+  }
+  return value;
 }
 
 function parseStringRecord(value: JsonValue | undefined): Record<string, string> | undefined {
@@ -527,9 +524,15 @@ function isFiniteNumber(value: JsonValue | undefined): value is number {
 function isJsonRecord(value: JsonValue | undefined): value is JsonRecord {
   if (value === undefined || value === null || Array.isArray(value)) return false;
   const prototype = Object.getPrototypeOf(value);
-  return (
-    prototype === Object.prototype ||
-    prototype === null ||
-    Object.getPrototypeOf(prototype) === null
-  );
+  if (prototype === Object.prototype || prototype === null) return true;
+  if (Object.getPrototypeOf(prototype) !== null) return false;
+  const constructor = Object.getOwnPropertyDescriptor(prototype, "constructor")?.value;
+  if (!constructor || constructor.prototype !== prototype) return false;
+  try {
+    return (
+      Function.prototype.toString.call(constructor) === Function.prototype.toString.call(Object)
+    );
+  } catch {
+    return false;
+  }
 }

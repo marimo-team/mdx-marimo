@@ -129,6 +129,38 @@ describe("marimo page protocol", () => {
     expect(parseCompiledMarimoPage(foreignPage)).toEqual(page);
   });
 
+  it("retains validated compiler output data", () => {
+    const page = compiledPage();
+    if (!page.cells[0]?.output) throw new Error("Expected compiled page output");
+    const data: JsonValue = JSON.parse('{"series":[1,2,3]}');
+    page.cells[0].output.data = data;
+
+    const parsed = parseCompiledMarimoPage(runtimeJsonValue(page));
+
+    expect(parsed?.cells[0]?.output?.data).toBe(data);
+  });
+
+  it("rejects sparse compiler output data", () => {
+    const page = compiledPage();
+    if (!page.cells[0]?.output) throw new Error("Expected compiled page output");
+    const data: JsonValue[] = [];
+    data.length = 1;
+    page.cells[0].output.data = data;
+
+    expect(parseCompiledMarimoPage(runtimeJsonValue(page))).toBeUndefined();
+  });
+
+  it("rejects protocol records with an arbitrary null-root prototype", () => {
+    const prototype = Object.create(null);
+    Object.defineProperty(prototype, "inherited", {
+      enumerable: true,
+      value: "not an own JSON field",
+    });
+    const page = Object.assign(Object.create(prototype), jsonValue(compiledPage()));
+
+    expect(parseCompiledMarimoPage(runtimeJsonValue(page))).toBeUndefined();
+  });
+
   it("preserves __proto__ as own data in parsed dictionaries", () => {
     const page = compiledPage();
     if (!page.app || !page.cells[0]?.output) throw new Error("Expected compiled page fixtures");

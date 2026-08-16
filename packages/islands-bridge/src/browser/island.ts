@@ -16,6 +16,21 @@ export type MountMarimoIslandOptions = {
   themeResolver?: MarimoThemeResolver;
 };
 
+export type MarimoIslandMountDependencies = {
+  acquireAssets: typeof acquireAssets;
+  applyMarimoTheme: typeof applyMarimoTheme;
+  hasConfirmedSoftNavigationAssets: typeof hasConfirmedSoftNavigationAssets;
+  installMarimoThemeBridge: typeof installMarimoThemeBridge;
+  refreshMarimoThemeBridge: typeof refreshMarimoThemeBridge;
+  retainDocumentNavigation: typeof retainDocumentNavigation;
+};
+
+export type MarimoIslandMount = (
+  host: HTMLElement,
+  payload: MarimoPageCellPayload,
+  options?: MountMarimoIslandOptions,
+) => () => void;
+
 type MarimoThemeBridgeOptions = {
   theme?: MarimoThemeMode;
   themeResolver?: MarimoThemeResolver;
@@ -26,6 +41,15 @@ type DocumentPlatform = {
 };
 
 const reconnectors = new WeakMap<HTMLElement, () => void>();
+const browserDependencies: MarimoIslandMountDependencies = {
+  acquireAssets,
+  applyMarimoTheme,
+  hasConfirmedSoftNavigationAssets,
+  installMarimoThemeBridge,
+  refreshMarimoThemeBridge,
+  retainDocumentNavigation,
+};
+const mountWithBrowserDependencies = createMarimoIslandMount(browserDependencies);
 
 export function assertCurrentDocument(host: { ownerDocument: Document }): void {
   const platform: DocumentPlatform = globalThis;
@@ -39,6 +63,22 @@ export function reconnectMarimoIsland(host: HTMLElement): void {
 }
 
 export function mountMarimoIsland(
+  host: HTMLElement,
+  payload: MarimoPageCellPayload,
+  options: MountMarimoIslandOptions = {},
+): () => void {
+  return mountWithBrowserDependencies(host, payload, options);
+}
+
+export function createMarimoIslandMount(
+  dependencies: MarimoIslandMountDependencies,
+): MarimoIslandMount {
+  return (host, payload, options = {}) =>
+    mountMarimoIslandWithDependencies(dependencies, host, payload, options);
+}
+
+function mountMarimoIslandWithDependencies(
+  dependencies: MarimoIslandMountDependencies,
   host: HTMLElement,
   payload: MarimoPageCellPayload,
   options: MountMarimoIslandOptions = {},
@@ -65,28 +105,28 @@ export function mountMarimoIsland(
   host.dataset.marimoCellIndex = String(payload.cell.index);
   host.innerHTML = payload.cell.html;
 
-  if (!payload.app || !hasConfirmedSoftNavigationAssets(payload.app)) {
-    releaseNavigation = retainDocumentNavigation();
+  if (!payload.app || !dependencies.hasConfirmedSoftNavigationAssets(payload.app)) {
+    releaseNavigation = dependencies.retainDocumentNavigation();
   }
 
   const themeOptions: MarimoThemeBridgeOptions = {};
   if (options.theme !== undefined) themeOptions.theme = options.theme;
   if (options.themeResolver) themeOptions.themeResolver = options.themeResolver;
-  const cleanupTheme = installMarimoThemeBridge(host, themeOptions);
+  const cleanupTheme = dependencies.installMarimoThemeBridge(host, themeOptions);
   const handleActivation = (supportsSoftNavigation: boolean) => {
     if (!active) return;
     if (supportsSoftNavigation) {
       releaseNavigation?.();
       releaseNavigation = undefined;
     } else {
-      releaseNavigation ??= retainDocumentNavigation();
+      releaseNavigation ??= dependencies.retainDocumentNavigation();
     }
-    applyMarimoTheme(host, currentTheme(), options.themeResolver);
+    dependencies.applyMarimoTheme(host, currentTheme(), options.themeResolver);
   };
 
   if (payload.app) {
     try {
-      const lease = acquireAssets(payload.app, host);
+      const lease = dependencies.acquireAssets(payload.app, host);
       activateAssets = lease.activate;
       releaseAssets = lease.release;
       lease.ready.then(handleActivation).catch((cause: unknown) => {
@@ -96,12 +136,12 @@ export function mountMarimoIsland(
       renderMarimoIslandError(host, cause);
     }
   } else {
-    applyMarimoTheme(host, currentTheme(), options.themeResolver);
+    dependencies.applyMarimoTheme(host, currentTheme(), options.themeResolver);
   }
 
   const reconnect = () => {
     if (!active) return;
-    refreshMarimoThemeBridge(host);
+    dependencies.refreshMarimoThemeBridge(host);
     void activateAssets?.()
       .then(handleActivation)
       .catch((cause: unknown) => {
