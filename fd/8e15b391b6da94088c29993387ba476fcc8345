@@ -1,0 +1,37 @@
+packages/islands-bridge/test/theme.test.ts
+  s_f1b4ea5a74854f::t_14569bfd212385 245
+  s_f1b4ea5a74854f::t_1e570dd6636a1d 10-13,210-211
+packages/islands-bridge/src/element/bridge.ts
+  s_f1b4ea5a74854f::t_617a3cd9cfb329 245
+  s_f1b4ea5a74854f::t_995e2d3b6d1f20 323,437-440,443
+packages/islands-bridge/test/element.test.ts
+  s_f1b4ea5a74854f::t_ea9900323ffc2a 297-314
+packages/islands-bridge/test/assets.test.ts
+  s_f1b4ea5a74854f::t_ee73dd883107ff 84-93,113-119,136-152
+  s_f1b4ea5a74854f::t_ae01344cf82232 135,153-166,546-550,554-564
+  s_f1b4ea5a74854f::t_787a8025229f30 68
+  s_f1b4ea5a74854f::t_c970ade76e7e87 1,94-112
+  s_f1b4ea5a74854f::t_b5773cdbc48c1d 11,69-83,521-545,551-553
+packages/islands-bridge/src/browser/assets.ts
+  s_f1b4ea5a74854f::t_9e7adbc7ec228a 370,379,393
+  s_f1b4ea5a74854f::t_3bdc09b5512de3 57,238,328,353,362-369,371-378,380-392,394,413,427-428,434-443,532
+  s_f1b4ea5a74854f::t_70c355eebea37f 429-433
+  s_f1b4ea5a74854f::t_ae01344cf82232 357
+  s_f1b4ea5a74854f::t_6e0a95cd81865a 56,61,411-412,424,426
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "fd8e15b391b6da94088c29993387ba476fcc8345",
+  "prompts": {},
+  "sessions": {
+    "s_f1b4ea5a74854f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a009a0-def0-7ed0-99c1-4390dd077dbd",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
