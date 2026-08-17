@@ -8,6 +8,7 @@ import {
 } from "../shared/dictionary-types.ts";
 import {
   createLexicalTypeEnvironment,
+  resolveTypeReference,
   type LexicalTypeEnvironment,
 } from "../shared/type-environment.ts";
 
@@ -55,32 +56,29 @@ function isTypeNode(node: ESTree.Node): node is ESTree.TSType {
   return typeNodeKinds.has(node.type);
 }
 
-function typeReferenceName(type: ESTree.TSTypeReference): string | null {
-  return type.typeName.type === "Identifier" ? type.typeName.name : null;
-}
-
-function isInsideTypeAliasDeclaration(node: ESTree.Node): boolean {
+function enclosingTypeAliasDeclaration(node: ESTree.Node): ESTree.TSTypeAliasDeclaration | null {
   let current: ESTree.Node | null = node.parent;
   while (current !== null && current.type !== "Program") {
-    if (current.type === "TSTypeAliasDeclaration") return true;
+    if (current.type === "TSTypeAliasDeclaration") return current;
     current = current.parent;
   }
-  return false;
+  return null;
 }
 
-function isPlainAliasConsumerUse(
-  node: ESTree.TSType,
-  environment: LexicalTypeEnvironment,
-): boolean {
+function isAliasConsumerUse(node: ESTree.TSType, environment: LexicalTypeEnvironment): boolean {
   if (node.type !== "TSTypeReference" || node.typeArguments?.params.length) return false;
-  const name = typeReferenceName(node);
-  if (name === null || isInsideTypeAliasDeclaration(node)) return false;
-  const alias = environment.lookupAlias(name, node);
-  return alias !== null && (alias.typeParameters?.params.length ?? 0) === 0;
+  const resolved = resolveTypeReference(node, environment);
+  const enclosingDeclaration = enclosingTypeAliasDeclaration(node);
+  return (
+    resolved !== null &&
+    resolved.declaration !== null &&
+    resolved.declaration !== enclosingDeclaration &&
+    (resolved.declaration.typeParameters?.params.length ?? 0) === 0
+  );
 }
 
 function shouldReportType(node: ESTree.TSType, environment: LexicalTypeEnvironment): boolean {
-  if (isPlainAliasConsumerUse(node, environment)) return false;
+  if (isAliasConsumerUse(node, environment)) return false;
   if (classifyUnsafeDictionary(node, environment) === null) return false;
   let current: ESTree.Node | null = node.parent;
   while (current !== null && current.type !== "Program") {

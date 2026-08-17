@@ -17,6 +17,7 @@ ruleTester.run("anti-slop/no-reflect-get", noReflectGetRule, {
     "const globalThis = { Reflect: { get() {} } }; globalThis.Reflect.get(target, 'value');",
     "const globalThis = { Reflect: { get() {} } }; globalThis['Reflect'].get(target, 'value');",
     "function read(globalThis: { Reflect: { get(target: object, key: PropertyKey): unknown } }) { return globalThis.Reflect.get(target, 'value'); }",
+    "let root = globalThis; root.Reflect.get(target, 'value');",
     "let { get: read } = Reflect; read(target, 'value');",
     "const localReflect = { get() {} }; const { get: read } = Reflect; read = localReflect.get; read(target, 'value');",
     "const localRead = () => {}; const { get: read = localRead } = Reflect; read(target, 'value');",
@@ -68,6 +69,10 @@ ruleTester.run("anti-slop/no-reflect-get", noReflectGetRule, {
       errors: [error],
     },
     { code: "globalThis.Reflect.get(target, 'value');", errors: [error] },
+    {
+      code: "const root = globalThis; root.Reflect.get(target, 'value');",
+      errors: [error],
+    },
     { code: "globalThis['Reflect'].get(target, 'value');", errors: [error] },
     { code: "globalThis['Reflect']['get'](target, 'value');", errors: [error] },
     {
@@ -80,6 +85,14 @@ ruleTester.run("anti-slop/no-reflect-get", noReflectGetRule, {
     },
     {
       code: "const { ['get']: read } = Reflect; read(target, 'value');",
+      errors: [error],
+    },
+    {
+      code: "const { [`get`]: read } = Reflect; read(target, 'value');",
+      errors: [error],
+    },
+    {
+      code: "const { ['get' as const]: read } = Reflect; read(target, 'value');",
       errors: [error],
     },
     {

@@ -1,4 +1,4 @@
-import type { ESTree, Scope, SourceCode, Variable } from "@oxlint/plugins";
+import type { ESTree, SourceCode, Variable } from "@oxlint/plugins";
 
 import { defineRule } from "@oxlint/plugins";
 
@@ -12,52 +12,15 @@ import {
   createLexicalTypeEnvironment,
   type LexicalTypeEnvironment,
 } from "../shared/type-environment.ts";
+import {
+  resolveValueVariable,
+  stableConstInitializer,
+  unwrapValueExpression,
+  variableDeclarator,
+} from "../shared/value-reference.ts";
 
 type FunctionExpression = ESTree.ArrowFunctionExpression | ESTree.Function;
 type TypeAssertion = ESTree.TSAsExpression | ESTree.TSTypeAssertion;
-
-function unwrapExpression(expression: ESTree.Expression): ESTree.Expression {
-  let current = expression;
-  while (
-    current.type === "ParenthesizedExpression" ||
-    current.type === "TSAsExpression" ||
-    current.type === "TSSatisfiesExpression" ||
-    current.type === "TSTypeAssertion" ||
-    current.type === "TSNonNullExpression"
-  ) {
-    current = current.expression;
-  }
-  return current;
-}
-
-function resolveVariable(
-  sourceCode: SourceCode,
-  identifier: ESTree.IdentifierReference,
-): Variable | null {
-  let scope: Scope | null = sourceCode.getScope(identifier);
-  while (scope !== null) {
-    const variable = scope.set.get(identifier.name);
-    if (variable !== undefined) return variable;
-    scope = scope.upper;
-  }
-  return null;
-}
-
-function variableDeclarator(variable: Variable): ESTree.VariableDeclarator | null {
-  if (variable.defs.length !== 1) return null;
-  const [definition] = variable.defs;
-  return definition?.type === "Variable" && definition.node.type === "VariableDeclarator"
-    ? definition.node
-    : null;
-}
-
-function isStableConstVariable(variable: Variable, declarator: ESTree.VariableDeclarator): boolean {
-  return (
-    declarator.parent.type === "VariableDeclaration" &&
-    declarator.parent.kind === "const" &&
-    variable.references.every((reference) => reference.init || !reference.isWrite())
-  );
-}
 
 function hasKnownEvidence(
   sourceCode: SourceCode,
@@ -65,20 +28,13 @@ function hasKnownEvidence(
   visitedVariables = new Set<Variable>(),
 ): boolean {
   if (isKnownEvidenceExpression(expression)) return true;
-  const unwrapped = unwrapExpression(expression);
+  const unwrapped = unwrapValueExpression(expression, { chain: false });
   if (unwrapped.type !== "Identifier") return false;
-  const variable = resolveVariable(sourceCode, unwrapped);
+  const variable = resolveValueVariable(sourceCode, unwrapped);
   if (variable === null || visitedVariables.has(variable)) return false;
-  const declarator = variableDeclarator(variable);
-  if (
-    declarator === null ||
-    declarator.init === null ||
-    !isStableConstVariable(variable, declarator)
-  ) {
-    return false;
-  }
-  visitedVariables.add(variable);
-  return hasKnownEvidence(sourceCode, declarator.init, visitedVariables);
+  const initializer = stableConstInitializer(variable);
+  if (initializer === null) return false;
+  return hasKnownEvidence(sourceCode, initializer, new Set([...visitedVariables, variable]));
 }
 
 function annotationTarget(
@@ -124,8 +80,38 @@ function functionName(sourceCode: SourceCode, owner: FunctionExpression | null):
 }
 
 function isEmptyObjectExpression(expression: ESTree.Expression): boolean {
-  const unwrapped = unwrapExpression(expression);
+  const unwrapped = unwrapValueExpression(expression, { chain: false });
   return unwrapped.type === "ObjectExpression" && unwrapped.properties.length === 0;
+}
+
+function isDefinitelyEmptyObjectFlow(
+  sourceCode: SourceCode,
+  expression: ESTree.Expression,
+  visitedVariables: ReadonlySet<Variable> = new Set(),
+): boolean {
+  const unwrapped = unwrapValueExpression(expression, { chain: false });
+  if (isEmptyObjectExpression(unwrapped)) return true;
+  if (unwrapped.type === "ConditionalExpression") {
+    return (
+      isDefinitelyEmptyObjectFlow(sourceCode, unwrapped.consequent, visitedVariables) &&
+      isDefinitelyEmptyObjectFlow(sourceCode, unwrapped.alternate, visitedVariables)
+    );
+  }
+  if (unwrapped.type === "SequenceExpression") {
+    const finalExpression = unwrapped.expressions.at(-1);
+    return (
+      finalExpression !== undefined &&
+      isDefinitelyEmptyObjectFlow(sourceCode, finalExpression, visitedVariables)
+    );
+  }
+  if (unwrapped.type !== "Identifier") return false;
+  const variable = resolveValueVariable(sourceCode, unwrapped);
+  if (variable === null || visitedVariables.has(variable)) return false;
+  const initializer = stableConstInitializer(variable);
+  return (
+    initializer !== null &&
+    isDefinitelyEmptyObjectFlow(sourceCode, initializer, new Set([...visitedVariables, variable]))
+  );
 }
 
 function isDictionaryAccumulatorTarget(destination: WideningTarget): boolean {
@@ -218,10 +204,11 @@ export const noKnownValueWideningRule = defineRule({
       subject: string,
     ): boolean => {
       if (destination === null) return false;
-      if (destination.kind === "finite dictionary" && !isEmptyObjectExpression(expression)) {
+      const isEmptyObject = isDefinitelyEmptyObjectFlow(context.sourceCode, expression);
+      if (destination.kind === "finite dictionary" && !isEmptyObject) {
         return false;
       }
-      if (isDictionaryAccumulatorTarget(destination) && isEmptyObjectExpression(expression)) {
+      if (isDictionaryAccumulatorTarget(destination) && isEmptyObject) {
         return false;
       }
       if (!hasKnownEvidence(context.sourceCode, expression)) return false;
@@ -291,7 +278,7 @@ export const noKnownValueWideningRule = defineRule({
       },
       AssignmentExpression(node) {
         if (node.operator !== "=" || node.left.type !== "Identifier") return;
-        const variable = resolveVariable(context.sourceCode, node.left);
+        const variable = resolveValueVariable(context.sourceCode, node.left);
         if (variable === null) return;
         const declarator = variableDeclarator(variable);
         if (declarator === null || declarator.id.type !== "Identifier") return;

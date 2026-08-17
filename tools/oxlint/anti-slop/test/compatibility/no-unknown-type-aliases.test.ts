@@ -1,5 +1,5 @@
 import { noUnknownTypeAliasesRule } from "../../rules/no-unknown-type-aliases.ts";
-import { testRule } from "./rule-tester.ts";
+import { testRule } from "../rule-tester.ts";
 
 testRule("no-unknown-type-aliases", noUnknownTypeAliasesRule, {
   valid: ["type Value = string | number;"],

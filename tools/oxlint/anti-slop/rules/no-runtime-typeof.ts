@@ -12,7 +12,7 @@ function isRuntimeFunction(node: ESTree.Node): node is RuntimeFunction {
   );
 }
 
-function isInsideTypeGuard(node: ESTree.Node): boolean {
+function isInsideExplicitTypeGuard(node: ESTree.Node): boolean {
   let current: ESTree.Node | null = node.parent;
   while (current !== null && current.type !== "Program") {
     if (isRuntimeFunction(current)) {
@@ -29,7 +29,7 @@ export const noRuntimeTypeofRule = defineRule({
     type: "problem",
     docs: {
       description:
-        "Disallow runtime typeof checks; external values must be decoded into meaningful types at their I/O boundary.",
+        "Disallow runtime typeof checks. External values must be decoded into meaningful types at their I/O boundary. The configured exception applies to functions with an explicit type-predicate return annotation.",
     },
     messages: {
       runtimeTypeof:
@@ -39,7 +39,11 @@ export const noRuntimeTypeofRule = defineRule({
       {
         type: "object",
         properties: {
-          allowInTypeGuards: { type: "boolean" },
+          allowInTypeGuards: {
+            type: "boolean",
+            description:
+              "Allow typeof inside functions with an explicit type-predicate return annotation.",
+          },
         },
         additionalProperties: false,
       },
@@ -55,7 +59,10 @@ export const noRuntimeTypeofRule = defineRule({
           option !== null &&
           !Array.isArray(option) &&
           option.allowInTypeGuards === true;
-        if (node.operator === "typeof" && (!allowInTypeGuards || !isInsideTypeGuard(node))) {
+        if (
+          node.operator === "typeof" &&
+          (!allowInTypeGuards || !isInsideExplicitTypeGuard(node))
+        ) {
           context.report({ node, messageId: "runtimeTypeof" });
         }
       },

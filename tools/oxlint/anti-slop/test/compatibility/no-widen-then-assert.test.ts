@@ -1,5 +1,5 @@
 import { noWidenThenAssertRule } from "../../rules/no-widen-then-assert.ts";
-import { testRule } from "./rule-tester.ts";
+import { testRule } from "../rule-tester.ts";
 
 testRule("no-widen-then-assert", noWidenThenAssertRule, {
   valid: [

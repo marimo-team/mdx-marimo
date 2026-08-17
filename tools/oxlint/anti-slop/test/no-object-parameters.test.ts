@@ -32,6 +32,15 @@ ruleTester.run("anti-slop/no-object-parameters", noObjectParametersRule, {
       errors: [error],
     },
     {
+      code: "type Input = object; function consume({ value }: Input) {}",
+      errors: [
+        {
+          messageId: "objectParameter",
+          data: { parameter: "{ value }" },
+        },
+      ],
+    },
+    {
       code: "function outer() { function consume(value: Alias) {} type Alias = object; }",
       errors: [error],
     },

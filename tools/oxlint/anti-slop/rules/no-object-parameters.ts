@@ -37,9 +37,9 @@ function parameterName(parameter: Parameter, sourceCode: SourceCode): string {
   if (parameter.type === "RestElement") {
     return parameterName(parameter.argument, sourceCode);
   }
-  return parameter.type === "Identifier"
-    ? parameter.name
-    : sourceCode.getText(parameter).replace(/\s*:\s*object\s*$/u, "");
+  if (parameter.type === "Identifier") return parameter.name;
+  const annotation = parameterAnnotation(parameter);
+  return sourceCode.text.slice(parameter.start, annotation?.start ?? parameter.end).trimEnd();
 }
 
 /** Ban the broad object type on function inputs, including local aliases to object. */

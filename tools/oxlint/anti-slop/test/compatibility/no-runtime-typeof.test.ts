@@ -1,5 +1,5 @@
 import { noRuntimeTypeofRule } from "../../rules/no-runtime-typeof.ts";
-import { testRule } from "./rule-tester.ts";
+import { testRule } from "../rule-tester.ts";
 
 testRule("no-runtime-typeof", noRuntimeTypeofRule, {
   valid: [

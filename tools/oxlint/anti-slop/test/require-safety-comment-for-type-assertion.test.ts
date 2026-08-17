@@ -14,6 +14,8 @@ ruleTester.run(
       "// SAFETY: Validation established the owner contract.\nexport const value = input as Owner;",
       "class Registry { // SAFETY: Validation established the member name.\n[input as string](): void {} }",
       "const registry = { // SAFETY: Validation established the property name.\n[input as string]: value };",
+      "const value = { id: input } as const;",
+      "// SAFETY: Validation established the owner contract.\nconst value = <Owner>input;",
     ],
     invalid: [
       {
@@ -38,6 +40,10 @@ ruleTester.run(
       },
       {
         code: "const registry = { previous: true, // SAFETY: Validation established the property name.\n[input as string]: value };",
+        errors: [error],
+      },
+      {
+        code: "const value = <Owner>input;",
         errors: [error],
       },
     ],

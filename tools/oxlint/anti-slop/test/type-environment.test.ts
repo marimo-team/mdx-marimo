@@ -1,16 +1,7 @@
-import type { ESTree } from "@oxlint/plugins";
-
 import { defineRule } from "@oxlint/plugins";
 
-import { createLexicalTypeEnvironment } from "../shared/type-environment.ts";
+import { createLexicalTypeEnvironment, qualifiedNameParts } from "../shared/type-environment.ts";
 import { ruleTester } from "./rule-tester.ts";
-
-function qualifiedPath(name: ESTree.TSTypeName): string[] | null {
-  if (name.type === "Identifier") return [name.name];
-  if (name.type !== "TSQualifiedName") return null;
-  const parent = qualifiedPath(name.left);
-  return parent === null ? null : [...parent, name.right.name];
-}
 
 const qualifiedInterfacesRule = defineRule({
   meta: {
@@ -27,7 +18,7 @@ const qualifiedInterfacesRule = defineRule({
       },
       TSTypeReference(node) {
         if (environment === null) return;
-        const path = qualifiedPath(node.typeName);
+        const path = qualifiedNameParts(node.typeName);
         if (path === null || path.length < 2) return;
         for (const declaration of environment.lookupQualifiedInterfaces(path, node)) {
           context.report({ node: declaration.id, messageId: "resolved" });

@@ -6,11 +6,16 @@ const error = { messageId: "moduleMock" };
 ruleTester.run("anti-slop/no-module-mocking", noModuleMockingRule, {
   valid: [
     "import { vi as localVi } from './helpers'; localVi.mock('./module');",
+    "import { jest as localJest } from './helpers'; localJest.mock('./module');",
+    "import * as testApi from './helpers'; testApi.jest.mock('./module');",
     "import { vi as localVi } from './helpers'; (localVi satisfies typeof localVi).mock('./module');",
     "import { vi as localVi } from './helpers'; const testApi = localVi; testApi.mock('./module');",
     "import * as testApi from './helpers'; testApi.vi.mock('./module');",
     "import * as testApi from './helpers'; (testApi.vi satisfies typeof testApi.vi).mock('./module');",
     "const vi = { mock() {} }; vi.mock('./module');",
+    "const jest = { mock() {} }; jest.mock('./module');",
+    "function register(jest: { mock(name: string): void }) { jest.mock('./module'); }",
+    "let root = globalThis; root.vi.mock('./module');",
     "const vi = { mock() {} }; (vi as typeof vi).mock('./module');",
     "const vi = { mock() {} }; const testApi = vi; testApi.mock('./module');",
     "import { vi } from 'vite-plus/test'; let testApi = vi; testApi.mock('./module');",
@@ -43,6 +48,34 @@ ruleTester.run("anti-slop/no-module-mocking", noModuleMockingRule, {
   invalid: [
     {
       code: "import { vi } from 'vite-plus/test'; vi.mock('./module');",
+      errors: [error],
+    },
+    {
+      code: "import { vi } from 'vite-plus/test'; vi.unstable_mockModule('./module');",
+      errors: [error],
+    },
+    {
+      code: "jest.mock('./module');",
+      errors: [error],
+    },
+    {
+      code: "globalThis.jest.mock('./module');",
+      errors: [error],
+    },
+    {
+      code: "const root = globalThis; root.vi.mock('./module');",
+      errors: [error],
+    },
+    {
+      code: "import { jest } from '@jest/globals'; jest.mock('./module');",
+      errors: [error],
+    },
+    {
+      code: "import { jest as testApi } from '@jest/globals'; testApi.unstable_mockModule('./module');",
+      errors: [error],
+    },
+    {
+      code: "import * as testApi from '@jest/globals'; testApi.jest.doMock('./module');",
       errors: [error],
     },
     {
@@ -123,6 +156,14 @@ ruleTester.run("anti-slop/no-module-mocking", noModuleMockingRule, {
     },
     {
       code: "import { vi } from 'vite-plus/test'; const { ['unstable_mockModule']: mockModule } = vi; mockModule('./module');",
+      errors: [error],
+    },
+    {
+      code: "import { vi } from 'vite-plus/test'; const { [`mock`]: mockModule } = vi; mockModule('./module');",
+      errors: [error],
+    },
+    {
+      code: "import { vi } from 'vite-plus/test'; const { ['mock' as const]: mockModule } = vi; mockModule('./module');",
       errors: [error],
     },
     {

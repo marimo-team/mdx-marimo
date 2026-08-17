@@ -199,7 +199,7 @@ function nearestBindings(
   return null;
 }
 
-function qualifiedNameParts(
+export function qualifiedNameParts(
   name: ESTree.TSTypeName | ESTree.BindingIdentifier | ESTree.IdentifierName,
 ): string[] | null {
   if (name.type === "Identifier") return [name.name];
@@ -813,6 +813,14 @@ function resolvesToUnknownInternal(
   if (type.type === "TSUnionType") {
     return type.types.some((member) =>
       resolvesToUnknownInternal(member, environment, options, substitutions, visited),
+    );
+  }
+  if (type.type === "TSIntersectionType") {
+    return (
+      type.types.length > 0 &&
+      type.types.every((member) =>
+        resolvesToUnknownInternal(member, environment, options, substitutions, visited),
+      )
     );
   }
   if (type.type === "TSTypeReference" && typeReferenceIs(type, "Awaited", environment)) {

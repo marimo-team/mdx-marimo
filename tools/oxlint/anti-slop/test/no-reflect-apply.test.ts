@@ -83,6 +83,14 @@ ruleTester.run("anti-slop/no-reflect-apply", noReflectApplyRule, {
       errors: [error],
     },
     {
+      code: "const { [`apply`]: invoke } = Reflect; invoke(fn, null, []);",
+      errors: [error],
+    },
+    {
+      code: "const { [<string>'apply']: invoke } = Reflect; invoke(fn, null, []);",
+      errors: [error],
+    },
+    {
       code: "const { apply } = globalThis.Reflect; apply(fn, null, []);",
       errors: [error],
     },

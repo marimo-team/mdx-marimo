@@ -1,104 +1,139 @@
-import type { ESTree, Scope, SourceCode, Variable } from "@oxlint/plugins";
+import type { ESTree, Reference, SourceCode, Variable } from "@oxlint/plugins";
 
 import { defineRule } from "@oxlint/plugins";
 
-function unwrapTransparentExpression(node: ESTree.Expression): ESTree.Expression {
-  let current = node;
-  while (
-    current.type === "ParenthesizedExpression" ||
-    current.type === "TSAsExpression" ||
-    current.type === "TSSatisfiesExpression" ||
-    current.type === "TSTypeAssertion" ||
-    current.type === "TSNonNullExpression"
-  ) {
-    current = current.expression;
-  }
-  return current;
-}
+import {
+  resolveValueVariable,
+  sameValueIdentifier,
+  stableConstInitializer,
+  unwrapValueExpression,
+} from "../shared/value-reference.ts";
 
 function isEmptyObjectExpression(node: ESTree.Expression): boolean {
-  const expression = unwrapTransparentExpression(node);
+  const expression = unwrapValueExpression(node);
   return expression.type === "ObjectExpression" && expression.properties.length === 0;
 }
 
-function resolveVariable(
-  sourceCode: SourceCode,
-  identifier: ESTree.IdentifierReference,
-): Variable | null {
-  let scope: Scope | null = sourceCode.getScope(identifier);
-  while (scope !== null) {
-    const variable = scope.set.get(identifier.name);
-    if (variable !== undefined) return variable;
-    scope = scope.upper;
+function executionBoundary(node: ESTree.Node): ESTree.Node | null {
+  let current: ESTree.Node | null = node;
+  while (current !== null) {
+    if (
+      current.type === "Program" ||
+      current.type === "ArrowFunctionExpression" ||
+      current.type === "FunctionDeclaration" ||
+      current.type === "FunctionExpression"
+    ) {
+      return current;
+    }
+    current = current.parent;
   }
   return null;
 }
 
-function stableConstInitializer(variable: Variable): ESTree.Expression | null {
-  if (variable.defs.length !== 1) return null;
-  const [definition] = variable.defs;
-  if (definition?.type !== "Variable" || definition.node.type !== "VariableDeclarator") {
-    return null;
-  }
-  const declarator = definition.node;
-  if (
-    declarator.id.type !== "Identifier" ||
-    declarator.init === null ||
-    declarator.parent.type !== "VariableDeclaration" ||
-    declarator.parent.kind !== "const" ||
-    variable.references.some((reference) => !reference.init && reference.isWrite())
+function outerTransparentValue(node: ESTree.Node): ESTree.Node {
+  let current = node;
+  let parent = current.parent;
+  while (
+    parent !== null &&
+    (parent.type === "ChainExpression" ||
+      parent.type === "ParenthesizedExpression" ||
+      parent.type === "TSAsExpression" ||
+      parent.type === "TSSatisfiesExpression" ||
+      parent.type === "TSTypeAssertion" ||
+      parent.type === "TSNonNullExpression") &&
+    parent.expression === current
   ) {
-    return null;
+    current = parent;
+    parent = current.parent;
   }
-  return declarator.init;
+  return current;
+}
+
+function isObjectSpreadRead(identifier: Reference["identifier"]): boolean {
+  const expression = outerTransparentValue(identifier);
+  return (
+    expression.parent !== null &&
+    expression.parent.type === "SpreadElement" &&
+    expression.parent.argument === expression &&
+    expression.parent.parent.type === "ObjectExpression"
+  );
+}
+
+function hasStableObjectState(
+  variable: Variable,
+  currentUse: ESTree.IdentifierReference,
+  finalUse: ESTree.SpreadElement,
+): boolean {
+  const targetBoundary = executionBoundary(finalUse);
+  for (const reference of variable.references) {
+    if (reference.init || sameValueIdentifier(reference.identifier, currentUse)) continue;
+
+    const identifier = reference.identifier;
+    const sameBoundary = executionBoundary(identifier) === targetBoundary;
+    if (sameBoundary && identifier.start >= finalUse.start) continue;
+    if (isObjectSpreadRead(identifier)) continue;
+    return false;
+  }
+  return true;
+}
+
+function stableInitializerAtUse(
+  sourceCode: SourceCode,
+  identifier: ESTree.IdentifierReference,
+  finalUse: ESTree.SpreadElement,
+): { initializer: ESTree.Expression; variable: Variable } | null {
+  const variable = resolveValueVariable(sourceCode, identifier);
+  if (variable === null || !hasStableObjectState(variable, identifier, finalUse)) return null;
+  const initializer = stableConstInitializer(variable);
+  return initializer === null ? null : { initializer, variable };
 }
 
 function hasEmptyObjectConditionalArm(
   sourceCode: SourceCode,
   node: ESTree.Expression,
+  finalUse: ESTree.SpreadElement,
   visitedVariables: ReadonlySet<Variable>,
 ): boolean {
-  const expression = unwrapTransparentExpression(node);
+  const expression = unwrapValueExpression(node);
   if (isEmptyObjectExpression(expression)) return true;
   if (expression.type === "Identifier") {
-    const variable = resolveVariable(sourceCode, expression);
-    if (variable === null || visitedVariables.has(variable)) return false;
-    const initializer = stableConstInitializer(variable);
-    if (initializer === null) return false;
+    const origin = stableInitializerAtUse(sourceCode, expression, finalUse);
+    if (origin === null || visitedVariables.has(origin.variable)) return false;
     return hasEmptyObjectConditionalArm(
       sourceCode,
-      initializer,
-      new Set([...visitedVariables, variable]),
+      origin.initializer,
+      finalUse,
+      new Set([...visitedVariables, origin.variable]),
     );
   }
   return (
     expression.type === "ConditionalExpression" &&
-    (hasEmptyObjectConditionalArm(sourceCode, expression.consequent, visitedVariables) ||
-      hasEmptyObjectConditionalArm(sourceCode, expression.alternate, visitedVariables))
+    (hasEmptyObjectConditionalArm(sourceCode, expression.consequent, finalUse, visitedVariables) ||
+      hasEmptyObjectConditionalArm(sourceCode, expression.alternate, finalUse, visitedVariables))
   );
 }
 
 function isConditionalEmptyObjectSpread(
   sourceCode: SourceCode,
   node: ESTree.Expression,
+  finalUse: ESTree.SpreadElement,
   visitedVariables: ReadonlySet<Variable> = new Set(),
 ): boolean {
-  const conditional = unwrapTransparentExpression(node);
+  const conditional = unwrapValueExpression(node);
   if (conditional.type === "Identifier") {
-    const variable = resolveVariable(sourceCode, conditional);
-    if (variable === null || visitedVariables.has(variable)) return false;
-    const initializer = stableConstInitializer(variable);
-    if (initializer === null) return false;
+    const origin = stableInitializerAtUse(sourceCode, conditional, finalUse);
+    if (origin === null || visitedVariables.has(origin.variable)) return false;
     return isConditionalEmptyObjectSpread(
       sourceCode,
-      initializer,
-      new Set([...visitedVariables, variable]),
+      origin.initializer,
+      finalUse,
+      new Set([...visitedVariables, origin.variable]),
     );
   }
   return (
     conditional.type === "ConditionalExpression" &&
-    (hasEmptyObjectConditionalArm(sourceCode, conditional.consequent, visitedVariables) ||
-      hasEmptyObjectConditionalArm(sourceCode, conditional.alternate, visitedVariables))
+    (hasEmptyObjectConditionalArm(sourceCode, conditional.consequent, finalUse, visitedVariables) ||
+      hasEmptyObjectConditionalArm(sourceCode, conditional.alternate, finalUse, visitedVariables))
   );
 }
 
@@ -120,7 +155,7 @@ export const noConditionalEmptyObjectSpreadRule = defineRule({
       SpreadElement(node) {
         if (node.parent.type !== "ObjectExpression") return;
 
-        if (isConditionalEmptyObjectSpread(context.sourceCode, node.argument)) {
+        if (isConditionalEmptyObjectSpread(context.sourceCode, node.argument, node)) {
           context.report({ node, messageId: "avoid" });
         }
       },

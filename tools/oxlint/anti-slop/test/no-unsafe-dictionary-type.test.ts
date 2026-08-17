@@ -11,7 +11,9 @@ ruleTester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule
     "type Values = Record<string, { [Key in 'id']: never }>;",
     "interface Value {} interface Value { readonly id: string } type Values = Record<string, Value>;",
     "interface Owner { readonly id: string } type Values = Record<string, Pick<Owner, 'id'>>;",
+    "interface Owner { readonly id: string } type Values = Record<string, Omit<Owner, never>>;",
     "type Pick<Owner, Key> = { readonly owner: Owner; readonly key: Key }; type Values = Record<string, Pick<{ readonly id: string }, never>>;",
+    "type Omit<Owner, Key> = { readonly owner: Owner; readonly key: Key }; interface Owner { readonly id: string } type Values = Record<string, Omit<Owner, keyof Owner>>;",
     "type Awaited<Value> = { readonly value: Value }; type Values = Record<string, Awaited<unknown>>;",
     "import type { Awaited } from './owner'; type Values = Record<string, Awaited<unknown>>;",
     "type Promise<Value> = { readonly value: Value }; type Values = Record<string, Awaited<Promise<unknown>>>;",
@@ -31,7 +33,7 @@ ruleTester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule
     },
     {
       code: "type Dict<T = unknown> = Record<string, T>; const d: Dict = {};",
-      errors: 1,
+      errors: [error],
     },
     {
       code: "function create() { type Hidden = unknown; type Values = Record<string, Hidden>; }",
@@ -63,6 +65,26 @@ ruleTester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule
     },
     {
       code: "interface Owner { readonly id: string } type Empty<Key extends keyof Owner = never> = Pick<Owner, Key>; type Values = Record<string, Empty>;",
+      errors: [error],
+    },
+    {
+      code: "namespace Types { export type Unsafe = Record<string, unknown>; } type First = Types.Unsafe; type Second = Types.Unsafe;",
+      errors: [error],
+    },
+    {
+      code: "namespace Types { export type Values<Value = unknown> = Record<string, Value>; } type Result = Types.Values;",
+      errors: [error],
+    },
+    {
+      code: "interface Owner { readonly id: string } type Values = Record<string, Omit<Owner, keyof Owner>>;",
+      errors: [error],
+    },
+    {
+      code: "interface Owner { readonly id: string } type Keys = keyof Owner; type Values = Record<string, Omit<Owner, Keys>>;",
+      errors: [error],
+    },
+    {
+      code: "interface Owner { readonly id: string } type Empty<Value> = Omit<Value, keyof Value>; type Values = Record<string, Empty<Owner>>;",
       errors: [error],
     },
     {

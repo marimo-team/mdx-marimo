@@ -1,5 +1,5 @@
 import { noUnsafeDictionaryTypeRule } from "../../rules/no-unsafe-dictionary-type.ts";
-import { testRule } from "./rule-tester.ts";
+import { testRule } from "../rule-tester.ts";
 
 testRule("no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
   valid: [

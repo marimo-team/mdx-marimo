@@ -38,6 +38,11 @@ const wideningRules = defineRule({
 });
 
 const errors = [{ messageId: "widening" }, { messageId: "widenThenAssert" }];
+const errorsWithAssertionWidening = [
+  { messageId: "widening" },
+  { messageId: "widening" },
+  { messageId: "widenThenAssert" },
+];
 
 ruleTester.run("anti-slop/widening-rules-integration", wideningRules, {
   valid: [],
@@ -49,6 +54,18 @@ ruleTester.run("anti-slop/widening-rules-integration", wideningRules, {
     {
       code: "type Result = { readonly [key: string]: number; readonly id: number }; const widened: Record<string, number> = { id: 1 }; const parsed = widened as Result;",
       errors,
+    },
+    {
+      code: "namespace Domain { export interface Result { readonly id: number } } const widened: Record<string, number> = { id: 1 }; const parsed = widened as Domain.Result;",
+      errors,
+    },
+    {
+      code: "type Bag<Value> = Record<string, Value>; const widened: Bag<unknown> = { id: 1 }; const parsed = widened as { readonly id: number };",
+      errors: errorsWithAssertionWidening,
+    },
+    {
+      code: "interface Bag<Value> { readonly [key: string]: Value } const widened: Bag<unknown> = { id: 1 }; const parsed = widened as { readonly id: number };",
+      errors: errorsWithAssertionWidening,
     },
   ],
 });

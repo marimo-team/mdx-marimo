@@ -1,5 +1,5 @@
 import { requireSafetyCommentForTypeAssertionRule } from "../../rules/require-safety-comment-for-type-assertion.ts";
-import { testRule } from "./rule-tester.ts";
+import { testRule } from "../rule-tester.ts";
 
 testRule("require-safety-comment-for-type-assertion", requireSafetyCommentForTypeAssertionRule, {
   valid: [

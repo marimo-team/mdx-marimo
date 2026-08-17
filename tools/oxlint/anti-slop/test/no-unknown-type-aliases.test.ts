@@ -9,8 +9,13 @@ ruleTester.run("anti-slop/no-unknown-type-aliases", noUnknownTypeAliasesRule, {
     "type Value = string; function outer<Value>() { type Safe = Value; }",
     "type Awaited<T> = { readonly value: T }; type Safe = Awaited<unknown>;",
     "import type * as Domain from './owner'; type Safe = Domain.Value;",
+    "type Safe = unknown & { readonly id: string };",
   ],
   invalid: [
+    {
+      code: "type Hidden = unknown & unknown;",
+      errors: [error],
+    },
     {
       code: "type Identity<T> = T; type Hidden = Identity<unknown>;",
       errors: [error],

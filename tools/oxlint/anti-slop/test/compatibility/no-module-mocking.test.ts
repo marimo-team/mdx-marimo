@@ -1,8 +1,13 @@
 import { noModuleMockingRule } from "../../rules/no-module-mocking.ts";
-import { testRule } from "./rule-tester.ts";
+import { testRule } from "../rule-tester.ts";
 
 testRule("no-module-mocking", noModuleMockingRule, {
   valid: [
+    `
+      function register(jest: { mock(name: string): void }) {
+        jest.mock("./service");
+      }
+    `,
     `
       import { vi } from "vite-plus/test";
       const callback = vi.fn();
@@ -35,6 +40,24 @@ testRule("no-module-mocking", noModuleMockingRule, {
     `,
   ],
   invalid: [
+    {
+      code: `
+        import { vi } from "vite-plus/test";
+        vi.unstable_mockModule("./service");
+      `,
+      errors: [{ messageId: "moduleMock" }],
+    },
+    {
+      code: 'globalThis.jest.mock("./service");',
+      errors: [{ messageId: "moduleMock" }],
+    },
+    {
+      code: `
+        import { jest } from "@jest/globals";
+        jest.mock("./service");
+      `,
+      errors: [{ messageId: "moduleMock" }],
+    },
     {
       code: `
         import { vi } from "vite-plus/test";
@@ -122,6 +145,14 @@ testRule("no-module-mocking", noModuleMockingRule, {
       code: `
         import * as testApi from "vite-plus/test";
         testApi!.vi.mock("./service");
+      `,
+      errors: [{ messageId: "moduleMock" }],
+    },
+    {
+      code: `
+        import { vi } from "vite-plus/test";
+        const { [\`mock\`]: mockModule } = vi;
+        mockModule("./service");
       `,
       errors: [{ messageId: "moduleMock" }],
     },

@@ -1,10 +1,11 @@
 import { noConditionalEmptyObjectSpreadRule } from "../../rules/no-conditional-empty-object-spread.ts";
-import { testRule } from "./rule-tester.ts";
+import { testRule } from "../rule-tester.ts";
 
 testRule("no-conditional-empty-object-spread", noConditionalEmptyObjectSpreadRule, {
   valid: [
     "const options = enabled ? { enabled } : { enabled: false };",
     "const options = { ...defaults };",
+    "const options = { ...(enabled ? { enabled } : { enabled: false }) };",
   ],
   invalid: [
     {

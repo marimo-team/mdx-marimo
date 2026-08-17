@@ -1,6 +1,12 @@
-import type { ESTree, Scope, SourceCode, Variable } from "@oxlint/plugins";
+import type { ESTree, SourceCode, Variable } from "@oxlint/plugins";
 
 import { defineRule } from "@oxlint/plugins";
+
+import {
+  resolveValueVariable,
+  stableConstInitializer,
+  unwrapValueExpression,
+} from "../shared/value-reference.ts";
 
 type TypeAssertionExpression = ESTree.TSAsExpression | ESTree.TSTypeAssertion;
 type TransparentExpression =
@@ -20,46 +26,6 @@ function isTransparentExpression(node: ESTree.Node): node is TransparentExpressi
   );
 }
 
-function unwrapTransparentExpression(expression: ESTree.Expression): ESTree.Expression {
-  let current = expression;
-  while (isTransparentExpression(current)) {
-    current = current.expression;
-  }
-  return current;
-}
-
-function resolveVariable(
-  sourceCode: SourceCode,
-  identifier: ESTree.IdentifierReference,
-): Variable | null {
-  let scope: Scope | null = sourceCode.getScope(identifier);
-  while (scope !== null) {
-    const variable = scope.set.get(identifier.name);
-    if (variable !== undefined) return variable;
-    scope = scope.upper;
-  }
-  return null;
-}
-
-function stableConstInitializer(variable: Variable): ESTree.Expression | null {
-  if (variable.defs.length !== 1) return null;
-  const [definition] = variable.defs;
-  if (definition?.type !== "Variable" || definition.node.type !== "VariableDeclarator") {
-    return null;
-  }
-  const declarator = definition.node;
-  if (
-    declarator.id.type !== "Identifier" ||
-    declarator.init === null ||
-    declarator.parent.type !== "VariableDeclaration" ||
-    declarator.parent.kind !== "const" ||
-    variable.references.some((reference) => !reference.init && reference.isWrite())
-  ) {
-    return null;
-  }
-  return declarator.init;
-}
-
 function hasForbiddenAssertionPath(
   sourceCode: SourceCode,
   expression: ESTree.Expression,
@@ -67,7 +33,7 @@ function hasForbiddenAssertionPath(
   hasNonConstAssertion: boolean,
   visitedVariables: ReadonlySet<Variable>,
 ): boolean {
-  const current = unwrapTransparentExpression(expression);
+  const current = unwrapValueExpression(expression, { assertions: false, chain: false });
   if (isTypeAssertionExpression(current)) {
     const nextCount = assertionCount + 1;
     const nextHasNonConst = hasNonConstAssertion || !isConstAssertion(current);
@@ -133,7 +99,7 @@ function hasForbiddenAssertionPath(
   }
   if (current.type !== "Identifier") return false;
 
-  const variable = resolveVariable(sourceCode, current);
+  const variable = resolveValueVariable(sourceCode, current);
   if (variable === null || visitedVariables.has(variable)) return false;
   const initializer = stableConstInitializer(variable);
   return (

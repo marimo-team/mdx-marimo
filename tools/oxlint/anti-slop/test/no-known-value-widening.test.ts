@@ -47,6 +47,12 @@ ruleTester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
     "interface Values { readonly value: { readonly id: number } } const { value }: Values = { value: { id: 1 } };",
     "const [value] = [{ id: 1 }];",
     "type Values = readonly [{ readonly id: number }]; const [value]: Values = [{ id: 1 }];",
+    "declare function load(): object; const { value } = { value: load() }; const widened: object = value;",
+    "declare function load(): object; const { value: selected } = { value: load() }; const widened: object = selected;",
+    "declare function load(): object; const [value] = [load()]; const widened: object = value;",
+    "const empty = {}; const values: Record<string, unknown> = empty;",
+    "type Fields<Key extends PropertyKey> = { [Name in Key]: unknown }; const empty = {}; const values: Fields<string> = empty;",
+    "let empty = {}; empty = { x: 1 }; const values: Record<'x', unknown> = empty;",
     "interface Options { readonly id: number } function create(value: Options = { id: 1 }) {}",
     "declare function load(): { readonly id: number }; function create(value: { readonly id: number } = load()) {}",
   ],
@@ -69,7 +75,31 @@ ruleTester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
     },
     {
       code: "const value: object = {} as object;",
-      errors: 1,
+      errors: [error],
+    },
+    {
+      code: "let value: object; value = { id: 1 };",
+      errors: [error],
+    },
+    {
+      code: "const empty = {}; const values: Record<'x', unknown> = empty;",
+      errors: [error],
+    },
+    {
+      code: "const base = {}; const empty = base; const values: Record<'x', unknown> = empty;",
+      errors: [error],
+    },
+    {
+      code: "declare const condition: boolean; const empty = condition ? {} : {}; const values: Record<'x', unknown> = empty;",
+      errors: [error],
+    },
+    {
+      code: "declare function touch(): void; const empty = (touch(), {}); const values: Record<'x', unknown> = empty;",
+      errors: [error],
+    },
+    {
+      code: "const values: Record<'x', unknown> = {};",
+      errors: [error],
     },
     {
       code: "function create() { type Values = Record<string, unknown>; const values: Values = { item: 1 }; }",
@@ -228,19 +258,19 @@ ruleTester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
     },
     {
       code: "declare const condition: boolean; const value: object = condition ? ({} as object) : ({} as object);",
-      errors: 1,
+      errors: [error],
     },
     {
       code: "declare function touch(): void; const value: object = (touch(), {} as object);",
-      errors: 1,
+      errors: [error],
     },
     {
       code: "declare const condition: boolean; declare const external: unknown; const value: unknown = condition ? ({} as object) : external;",
-      errors: 1,
+      errors: [error],
     },
     {
       code: "declare function load(): unknown; const value: unknown = ({} as object, load());",
-      errors: 1,
+      errors: [error],
     },
     {
       code: "function create(value: { readonly id: number } = { id: 1 }) {}",

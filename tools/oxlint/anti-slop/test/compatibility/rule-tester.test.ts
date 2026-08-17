@@ -1,6 +1,6 @@
 import { noReflectApplyRule } from "../../rules/no-reflect-apply.ts";
 import { noReflectGetRule } from "../../rules/no-reflect-get.ts";
-import { testRule } from "./rule-tester.ts";
+import { testRule } from "../rule-tester.ts";
 
 testRule("no-reflect-get", noReflectGetRule, {
   valid: [
@@ -66,6 +66,10 @@ testRule("no-reflect-get", noReflectGetRule, {
       code: "const value = (Reflect satisfies typeof Reflect).get(record, 'value');",
       errors: [{ messageId: "reflectGet" }],
     },
+    {
+      code: "const { [`get`]: read } = Reflect; const value = read(record, 'value');",
+      errors: [{ messageId: "reflectGet" }],
+    },
   ],
 });
 
@@ -82,6 +86,10 @@ testRule("no-reflect-apply", noReflectApplyRule, {
     },
     {
       code: "const value = globalThis.Reflect.apply(callback, receiver, args);",
+      errors: [{ messageId: "reflectApply" }],
+    },
+    {
+      code: "const { ['apply' as const]: invoke } = Reflect; const value = invoke(callback, receiver, args);",
       errors: [{ messageId: "reflectApply" }],
     },
   ],

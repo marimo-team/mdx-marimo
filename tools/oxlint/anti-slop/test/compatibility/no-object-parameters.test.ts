@@ -1,5 +1,5 @@
 import { noObjectParametersRule } from "../../rules/no-object-parameters.ts";
-import { testRule } from "./rule-tester.ts";
+import { testRule } from "../rule-tester.ts";
 
 testRule("no-object-parameters", noObjectParametersRule, {
   valid: [

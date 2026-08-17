@@ -69,6 +69,115 @@ function expressionPath(expression: ESTree.Expression): readonly string[] | null
   return owner === null ? null : [...owner, expression.property.name];
 }
 
+function heritageTypeName(expression: ESTree.Expression): ESTree.TSTypeName | null {
+  if (expression.type === "Identifier") return expression;
+  if (
+    expression.type !== "MemberExpression" ||
+    expression.computed ||
+    expression.property.type !== "Identifier"
+  ) {
+    return null;
+  }
+  const left = heritageTypeName(expression.object);
+  if (left === null) return null;
+  return {
+    type: "TSQualifiedName",
+    left,
+    right: expression.property,
+    range: expression.range,
+    start: expression.start,
+    end: expression.end,
+    loc: expression.loc,
+    parent: expression.parent,
+  };
+}
+
+function expressionTypeReference(
+  expression: ESTree.Expression,
+  typeArguments: ESTree.TSTypeParameterInstantiation | null,
+  parent: ESTree.Node,
+): ESTree.TSTypeReference | null {
+  const typeName = heritageTypeName(expression);
+  return typeName === null
+    ? null
+    : {
+        type: "TSTypeReference",
+        typeName,
+        typeArguments,
+        range: expression.range,
+        start: expression.start,
+        end: expression.end,
+        loc: expression.loc,
+        parent,
+      };
+}
+
+function heritageTypeReference(
+  heritage: ESTree.TSInterfaceHeritage,
+): ESTree.TSTypeReference | null {
+  return expressionTypeReference(heritage.expression, heritage.typeArguments, heritage);
+}
+
+function classHeritageTypeReference(declaration: ESTree.Class): ESTree.TSTypeReference | null {
+  return declaration.superClass === null
+    ? null
+    : expressionTypeReference(
+        declaration.superClass,
+        declaration.superTypeArguments ?? null,
+        declaration,
+      );
+}
+
+function bindTypeParameters(
+  parameters: readonly ESTree.TSTypeParameter[],
+  arguments_: readonly ESTree.TSType[],
+  callerSubstitutions: TypeSubstitutions,
+): TypeSubstitutions | null {
+  if (arguments_.length > parameters.length) return null;
+
+  const substitutions = new Map<string, ResolvedType>();
+  for (const [index, parameter] of parameters.entries()) {
+    const argument = arguments_[index];
+    if (argument !== undefined) {
+      substitutions.set(parameter.name.name, {
+        type: argument,
+        substitutions: callerSubstitutions,
+      });
+      continue;
+    }
+    if (parameter.default === null) return null;
+    substitutions.set(parameter.name.name, {
+      type: parameter.default,
+      substitutions: new Map(substitutions),
+    });
+  }
+  return substitutions;
+}
+
+function bindInterfaceTypeParameters(
+  declaration: ESTree.TSInterfaceDeclaration,
+  reference: ESTree.TSTypeReference,
+  callerSubstitutions: TypeSubstitutions,
+): TypeSubstitutions | null {
+  return bindTypeParameters(
+    declaration.typeParameters?.params ?? [],
+    reference.typeArguments?.params ?? [],
+    callerSubstitutions,
+  );
+}
+
+function bindClassTypeParameters(
+  declaration: ESTree.Class,
+  reference: ESTree.TSTypeReference,
+  callerSubstitutions: TypeSubstitutions,
+): TypeSubstitutions | null {
+  return bindTypeParameters(
+    declaration.typeParameters?.params ?? [],
+    reference.typeArguments?.params ?? [],
+    callerSubstitutions,
+  );
+}
+
 function interfaceDeclarations(
   path: readonly string[],
   useNode: ESTree.Node,
@@ -201,9 +310,72 @@ function isRequiredNonIndexMember(member: ESTree.TSSignature): boolean {
   return true;
 }
 
+function typeHasRequiredNonIndexMember(
+  type: ESTree.TSType,
+  environment: LexicalTypeEnvironment,
+  substitutions: TypeSubstitutions,
+  resolving: ReadonlySet<object>,
+): boolean {
+  const unwrapped = unwrapTransparentType(type);
+  if (unwrapped.type === "TSTypeLiteral") {
+    return unwrapped.members.some(isRequiredNonIndexMember);
+  }
+  if (unwrapped.type === "TSIntersectionType") {
+    return unwrapped.types.some((member) =>
+      typeHasRequiredNonIndexMember(member, environment, substitutions, resolving),
+    );
+  }
+  if (unwrapped.type !== "TSTypeReference") return false;
+
+  if (isBuiltInReference(unwrapped, "Record", environment)) return false;
+  if (isBuiltInReference(unwrapped, "Partial", environment)) return false;
+  if (
+    isBuiltInReference(unwrapped, "Readonly", environment) ||
+    isBuiltInReference(unwrapped, "Required", environment) ||
+    isBuiltInReference(unwrapped, "NonNullable", environment)
+  ) {
+    const wrapped = unwrapped.typeArguments?.params[0];
+    return (
+      wrapped === undefined ||
+      typeHasRequiredNonIndexMember(wrapped, environment, substitutions, resolving)
+    );
+  }
+
+  const resolved = resolveTypeReference(unwrapped, environment, substitutions);
+  if (resolved !== null) {
+    if (resolving.has(resolved.identity)) return true;
+    const nextResolving = new Set(resolving);
+    nextResolving.add(resolved.identity);
+    return typeHasRequiredNonIndexMember(
+      resolved.type,
+      environment,
+      resolved.substitutions,
+      nextResolving,
+    );
+  }
+
+  const path = typeReferencePath(unwrapped);
+  if (path === null) return true;
+  const interfaces = interfaceDeclarations(path, unwrapped, environment);
+  const classes = classDeclarations(path, unwrapped, environment);
+  return (
+    (interfaces.length === 0 && classes.length === 0) ||
+    interfaceHasRequiredNonIndexMember(
+      interfaces,
+      unwrapped,
+      environment,
+      substitutions,
+      resolving,
+    ) ||
+    classHasRequiredNonIndexMember(classes, unwrapped, environment, substitutions, resolving)
+  );
+}
+
 function interfaceHasRequiredNonIndexMember(
   declarations: readonly ESTree.TSInterfaceDeclaration[],
+  reference: ESTree.TSTypeReference,
   environment: LexicalTypeEnvironment,
+  callerSubstitutions: TypeSubstitutions,
   resolving: ReadonlySet<object>,
 ): boolean {
   const nextResolving = new Set(resolving);
@@ -212,19 +384,74 @@ function interfaceHasRequiredNonIndexMember(
     nextResolving.add(declaration);
   }
 
-  return declarations.some(
-    (declaration) =>
+  return declarations.some((declaration) => {
+    const substitutions = bindInterfaceTypeParameters(declaration, reference, callerSubstitutions);
+    return (
+      substitutions === null ||
       declaration.body.body.some(isRequiredNonIndexMember) ||
       declaration.extends.some((heritage) => {
-        const path = expressionPath(heritage.expression);
-        if (path === null) return true;
-        const bases = interfaceDeclarations(path, heritage, environment);
+        const heritageReference = heritageTypeReference(heritage);
         return (
-          bases.length === 0 ||
-          interfaceHasRequiredNonIndexMember(bases, environment, nextResolving)
+          heritageReference === null ||
+          typeHasRequiredNonIndexMember(
+            heritageReference,
+            environment,
+            substitutions,
+            nextResolving,
+          )
         );
-      }),
+      })
+    );
+  });
+}
+
+function isRequiredParameterProperty(parameter: ESTree.ParamPattern): boolean {
+  return (
+    parameter.type === "TSParameterProperty" &&
+    !parameter.static &&
+    !("optional" in parameter.parameter && Boolean(parameter.parameter.optional))
   );
+}
+
+function isRequiredClassInstanceMember(member: ESTree.ClassElement): boolean {
+  if (member.type === "TSIndexSignature" || member.type === "StaticBlock" || member.static) {
+    return false;
+  }
+  if (member.type === "MethodDefinition" || member.type === "TSAbstractMethodDefinition") {
+    return member.kind === "constructor"
+      ? member.value.params.some(isRequiredParameterProperty)
+      : member.optional !== true;
+  }
+  if (member.type === "PropertyDefinition" || member.type === "TSAbstractPropertyDefinition") {
+    return member.optional !== true;
+  }
+  return true;
+}
+
+function classHasRequiredNonIndexMember(
+  declarations: readonly ESTree.Class[],
+  reference: ESTree.TSTypeReference,
+  environment: LexicalTypeEnvironment,
+  callerSubstitutions: TypeSubstitutions,
+  resolving: ReadonlySet<object>,
+): boolean {
+  const nextResolving = new Set(resolving);
+  for (const declaration of declarations) {
+    if (resolving.has(declaration)) return true;
+    nextResolving.add(declaration);
+  }
+
+  return declarations.some((declaration) => {
+    const substitutions = bindClassTypeParameters(declaration, reference, callerSubstitutions);
+    const heritage = classHeritageTypeReference(declaration);
+    return (
+      substitutions === null ||
+      declaration.body.body.some(isRequiredClassInstanceMember) ||
+      (declaration.superClass !== null &&
+        (heritage === null ||
+          typeHasRequiredNonIndexMember(heritage, environment, substitutions, nextResolving)))
+    );
+  });
 }
 
 function isNeverKeyDomain(
@@ -255,6 +482,204 @@ function isNeverKeyDomain(
   const nextResolving = new Set(resolving);
   nextResolving.add(resolved.identity);
   return isNeverKeyDomain(resolved.type, environment, resolved.substitutions, nextResolving);
+}
+
+function sameTypeReferencePath(
+  left: ESTree.TSTypeReference,
+  right: ESTree.TSTypeReference,
+): boolean {
+  const leftPath = typeReferencePath(left);
+  const rightPath = typeReferencePath(right);
+  return (
+    leftPath !== null &&
+    rightPath !== null &&
+    leftPath.length === rightPath.length &&
+    leftPath.every((part, index) => part === rightPath[index])
+  );
+}
+
+function sameResolvedType(
+  left: ESTree.TSType,
+  leftSubstitutions: TypeSubstitutions,
+  right: ESTree.TSType,
+  rightSubstitutions: TypeSubstitutions,
+  environment: LexicalTypeEnvironment,
+  resolving: ReadonlySet<object>,
+): boolean {
+  const leftType = unwrapTransparentType(left);
+  const rightType = unwrapTransparentType(right);
+  if (leftType === rightType && leftSubstitutions === rightSubstitutions) return true;
+
+  const leftResolved =
+    leftType.type === "TSTypeReference"
+      ? resolveTypeReference(leftType, environment, leftSubstitutions)
+      : null;
+  const rightResolved =
+    rightType.type === "TSTypeReference"
+      ? resolveTypeReference(rightType, environment, rightSubstitutions)
+      : null;
+  if (
+    leftResolved !== null &&
+    rightResolved !== null &&
+    leftResolved.identity === rightResolved.identity
+  ) {
+    return true;
+  }
+  if (leftResolved !== null && !resolving.has(leftResolved.identity)) {
+    const nextResolving = new Set(resolving);
+    nextResolving.add(leftResolved.identity);
+    return sameResolvedType(
+      leftResolved.type,
+      leftResolved.substitutions,
+      rightType,
+      rightSubstitutions,
+      environment,
+      nextResolving,
+    );
+  }
+  if (rightResolved !== null && !resolving.has(rightResolved.identity)) {
+    const nextResolving = new Set(resolving);
+    nextResolving.add(rightResolved.identity);
+    return sameResolvedType(
+      leftType,
+      leftSubstitutions,
+      rightResolved.type,
+      rightResolved.substitutions,
+      environment,
+      nextResolving,
+    );
+  }
+
+  if (leftType.type === "TSTypeReference" && rightType.type === "TSTypeReference") {
+    if (!sameTypeReferencePath(leftType, rightType)) return false;
+    const leftArguments = leftType.typeArguments?.params ?? [];
+    const rightArguments = rightType.typeArguments?.params ?? [];
+    return (
+      leftArguments.length === rightArguments.length &&
+      leftArguments.every((argument, index) => {
+        const rightArgument = rightArguments[index];
+        return (
+          rightArgument !== undefined &&
+          sameResolvedType(
+            argument,
+            leftSubstitutions,
+            rightArgument,
+            rightSubstitutions,
+            environment,
+            resolving,
+          )
+        );
+      })
+    );
+  }
+
+  if (leftType.type !== rightType.type) return false;
+  if (leftType.type === "TSArrayType" && rightType.type === "TSArrayType") {
+    return sameResolvedType(
+      leftType.elementType,
+      leftSubstitutions,
+      rightType.elementType,
+      rightSubstitutions,
+      environment,
+      resolving,
+    );
+  }
+  if (
+    (leftType.type === "TSUnionType" && rightType.type === "TSUnionType") ||
+    (leftType.type === "TSIntersectionType" && rightType.type === "TSIntersectionType")
+  ) {
+    return (
+      leftType.types.length === rightType.types.length &&
+      leftType.types.every((member, index) => {
+        const rightMember = rightType.types[index];
+        return (
+          rightMember !== undefined &&
+          sameResolvedType(
+            member,
+            leftSubstitutions,
+            rightMember,
+            rightSubstitutions,
+            environment,
+            resolving,
+          )
+        );
+      })
+    );
+  }
+  if (leftType.type === "TSTypeOperator" && rightType.type === "TSTypeOperator") {
+    return (
+      leftType.operator === rightType.operator &&
+      sameResolvedType(
+        leftType.typeAnnotation,
+        leftSubstitutions,
+        rightType.typeAnnotation,
+        rightSubstitutions,
+        environment,
+        resolving,
+      )
+    );
+  }
+  if (leftType.type === "TSLiteralType" && rightType.type === "TSLiteralType") {
+    return (
+      leftType.literal.type === rightType.literal.type &&
+      "value" in leftType.literal &&
+      "value" in rightType.literal &&
+      leftType.literal.value === rightType.literal.value
+    );
+  }
+  return (
+    leftType.type === "TSAnyKeyword" ||
+    leftType.type === "TSBigIntKeyword" ||
+    leftType.type === "TSBooleanKeyword" ||
+    leftType.type === "TSNeverKeyword" ||
+    leftType.type === "TSNullKeyword" ||
+    leftType.type === "TSNumberKeyword" ||
+    leftType.type === "TSObjectKeyword" ||
+    leftType.type === "TSStringKeyword" ||
+    leftType.type === "TSSymbolKeyword" ||
+    leftType.type === "TSUndefinedKeyword" ||
+    leftType.type === "TSUnknownKeyword" ||
+    leftType.type === "TSVoidKeyword"
+  );
+}
+
+function keyofOperand(
+  type: ESTree.TSType,
+  environment: LexicalTypeEnvironment,
+  substitutions: TypeSubstitutions,
+  resolving: ReadonlySet<object>,
+): ResolvedType | null {
+  const unwrapped = unwrapTransparentType(type);
+  if (unwrapped.type === "TSTypeOperator" && unwrapped.operator === "keyof") {
+    return { type: unwrapped.typeAnnotation, substitutions };
+  }
+  if (unwrapped.type !== "TSTypeReference") return null;
+  const resolved = resolveTypeReference(unwrapped, environment, substitutions);
+  if (resolved === null || resolving.has(resolved.identity)) return null;
+  const nextResolving = new Set(resolving);
+  nextResolving.add(resolved.identity);
+  return keyofOperand(resolved.type, environment, resolved.substitutions, nextResolving);
+}
+
+function omitRemovesAllKeys(
+  source: ESTree.TSType,
+  omitted: ESTree.TSType,
+  environment: LexicalTypeEnvironment,
+  substitutions: TypeSubstitutions,
+  resolving: ReadonlySet<object>,
+): boolean {
+  const operand = keyofOperand(omitted, environment, substitutions, resolving);
+  return (
+    operand !== null &&
+    sameResolvedType(
+      source,
+      substitutions,
+      operand.type,
+      operand.substitutions,
+      environment,
+      resolving,
+    )
+  );
 }
 
 function unsafeDirectValue(
@@ -292,7 +717,7 @@ function unsafeDirectValue(
     );
     if (unsafeMembers.includes("any")) return "any";
     return unsafeMembers.length > 0 && unsafeMembers.every((member) => member !== null)
-      ? unsafeMembers[0]
+      ? (unsafeMembers[0] ?? null)
       : null;
   }
   if (unwrapped.type !== "TSTypeReference") return null;
@@ -331,6 +756,15 @@ function unsafeDirectValue(
   if (isBuiltInReference(unwrapped, "Pick", environment)) {
     const key = unwrapped.typeArguments?.params[1];
     return key !== undefined && isNeverKeyDomain(key, environment, substitutions, resolving)
+      ? "empty-object"
+      : null;
+  }
+  if (isBuiltInReference(unwrapped, "Omit", environment)) {
+    const source = unwrapped.typeArguments?.params[0];
+    const omitted = unwrapped.typeArguments?.params[1];
+    return source !== undefined &&
+      omitted !== undefined &&
+      omitRemovesAllKeys(source, omitted, environment, substitutions, resolving)
       ? "empty-object"
       : null;
   }
@@ -380,8 +814,6 @@ function dictionaryValueTypes(
   }
 
   if (unwrapped.type !== "TSTypeReference") return [];
-  const name = typeReferenceName(unwrapped);
-
   if (isBuiltInReferenceFrom(unwrapped, TRANSPARENT_WRAPPERS, environment)) {
     const wrapped = unwrapped.typeArguments?.params[0];
     return wrapped === undefined
@@ -526,7 +958,6 @@ function broadMappedKeyDomain(
   if (isBuiltInReference(unwrapped, "PropertyKey", environment)) {
     return PROPERTY_KEY_DOMAIN;
   }
-  const name = typeReferenceName(unwrapped);
   if (isBuiltInReferenceFrom(unwrapped, STRING_DOMAIN_WRAPPERS, environment)) {
     const value = unwrapped.typeArguments?.params[0];
     return value !== undefined &&
@@ -540,6 +971,76 @@ function broadMappedKeyDomain(
   const nextResolving = new Set(resolving);
   nextResolving.add(resolved.identity);
   return broadMappedKeyDomain(resolved.type, environment, resolved.substitutions, nextResolving);
+}
+
+function interfaceBroadIndexDomain(
+  declarations: readonly ESTree.TSInterfaceDeclaration[],
+  reference: ESTree.TSTypeReference,
+  environment: LexicalTypeEnvironment,
+  callerSubstitutions: TypeSubstitutions,
+  resolving: ReadonlySet<object>,
+): number {
+  let domain = 0;
+  for (const declaration of declarations) {
+    if (resolving.has(declaration)) continue;
+    const nextResolving = new Set(resolving);
+    nextResolving.add(declaration);
+    const substitutions = bindInterfaceTypeParameters(declaration, reference, callerSubstitutions);
+    if (substitutions === null) continue;
+    for (const member of declaration.body.body) {
+      if (member.type !== "TSIndexSignature") continue;
+      const [parameter] = member.parameters;
+      if (parameter === undefined) continue;
+      domain |=
+        broadMappedKeyDomain(
+          parameter.typeAnnotation.typeAnnotation,
+          environment,
+          substitutions,
+          nextResolving,
+        ) & PROPERTY_KEY_DOMAIN;
+    }
+    for (const heritage of declaration.extends) {
+      const reference = heritageTypeReference(heritage);
+      if (reference !== null) {
+        domain |= keyofMappedKeyDomain(reference, environment, substitutions, nextResolving);
+      }
+    }
+  }
+  return domain;
+}
+
+function classBroadIndexDomain(
+  declarations: readonly ESTree.Class[],
+  reference: ESTree.TSTypeReference,
+  environment: LexicalTypeEnvironment,
+  callerSubstitutions: TypeSubstitutions,
+  resolving: ReadonlySet<object>,
+): number {
+  let domain = 0;
+  for (const declaration of declarations) {
+    if (resolving.has(declaration)) continue;
+    const nextResolving = new Set(resolving);
+    nextResolving.add(declaration);
+    const substitutions = bindClassTypeParameters(declaration, reference, callerSubstitutions);
+    if (substitutions === null) continue;
+    for (const member of declaration.body.body) {
+      if (member.type !== "TSIndexSignature") continue;
+      const [parameter] = member.parameters;
+      if (parameter === undefined) continue;
+      domain |=
+        broadMappedKeyDomain(
+          parameter.typeAnnotation.typeAnnotation,
+          environment,
+          substitutions,
+          nextResolving,
+        ) & PROPERTY_KEY_DOMAIN;
+    }
+    const heritage = classHeritageTypeReference(declaration);
+    if (heritage !== null) {
+      domain |= keyofMappedKeyDomain(heritage, environment, substitutions, nextResolving);
+    }
+  }
+  return domain;
 }
 
 function keyofMappedKeyDomain(
@@ -604,24 +1105,21 @@ function keyofMappedKeyDomain(
   if (name !== null && environment.hasTypeParameter(name, unwrapped)) return 0;
   const path = typeReferencePath(unwrapped);
   if (path === null) return 0;
-  return interfaceDeclarations(path, unwrapped, environment).reduce(
-    (domain, declaration) =>
-      domain |
-      declaration.body.body.reduce((memberDomain, member) => {
-        if (member.type !== "TSIndexSignature") return memberDomain;
-        const [parameter] = member.parameters;
-        return parameter === undefined
-          ? memberDomain
-          : memberDomain |
-              (broadMappedKeyDomain(
-                parameter.typeAnnotation.typeAnnotation,
-                environment,
-                substitutions,
-                resolving,
-              ) &
-                PROPERTY_KEY_DOMAIN);
-      }, 0),
-    0,
+  return (
+    interfaceBroadIndexDomain(
+      interfaceDeclarations(path, unwrapped, environment),
+      unwrapped,
+      environment,
+      substitutions,
+      resolving,
+    ) |
+    classBroadIndexDomain(
+      classDeclarations(path, unwrapped, environment),
+      unwrapped,
+      environment,
+      substitutions,
+      resolving,
+    )
   );
 }
 
@@ -835,24 +1333,21 @@ function classifyWideningTargetInternal(
   const resolved = resolveTypeReference(unwrapped, environment, substitutions);
   if (resolved === null) {
     if (name !== null && environment.hasTypeParameter(name, unwrapped)) return null;
-    const declarations = interfaceDeclarations(path, unwrapped, environment);
-    const hasBroadIndex = declarations.some((declaration) =>
-      declaration.body.body.some((member) => {
-        if (member.type !== "TSIndexSignature") return false;
-        const [parameter] = member.parameters;
-        return (
-          parameter !== undefined &&
-          isBroadMappedKey(
-            parameter.typeAnnotation.typeAnnotation,
-            environment,
-            substitutions,
-            resolving,
-          )
-        );
-      }),
-    );
+    const interfaces = interfaceDeclarations(path, unwrapped, environment);
+    const classes = classDeclarations(path, unwrapped, environment);
+    const hasBroadIndex =
+      (interfaceBroadIndexDomain(interfaces, unwrapped, environment, substitutions, resolving) |
+        classBroadIndexDomain(classes, unwrapped, environment, substitutions, resolving)) !==
+      0;
     return hasBroadIndex &&
-      !interfaceHasRequiredNonIndexMember(declarations, environment, resolving)
+      !interfaceHasRequiredNonIndexMember(
+        interfaces,
+        unwrapped,
+        environment,
+        substitutions,
+        resolving,
+      ) &&
+      !classHasRequiredNonIndexMember(classes, unwrapped, environment, substitutions, resolving)
       ? { kind: "open dictionary" }
       : null;
   }
@@ -875,7 +1370,7 @@ function classifyWideningTargetInternal(
     if (target?.kind === "open dictionary" || target?.kind === "generic container") {
       return { kind: "generic container" };
     }
-    return target?.kind === "finite dictionary" ? target : null;
+    return target;
   }
 
   return classifyWideningTargetInternal(

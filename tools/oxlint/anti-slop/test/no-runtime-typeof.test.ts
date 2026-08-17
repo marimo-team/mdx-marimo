@@ -42,5 +42,10 @@ ruleTester.run("anti-slop/no-runtime-typeof", noRuntimeTypeofRule, {
       options: allowInTypeGuards,
       errors: [error],
     },
+    {
+      code: "const isString: (value: unknown) => value is string = (value) => typeof value === 'string';",
+      options: allowInTypeGuards,
+      errors: [error],
+    },
   ],
 });

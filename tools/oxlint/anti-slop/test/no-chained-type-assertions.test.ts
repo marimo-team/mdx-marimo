@@ -21,6 +21,8 @@ ruleTester.run("anti-slop/no-chained-type-assertions", noChainedTypeAssertionsRu
     "const value = (condition ? ({ first } as const) : ({ second } as const)) as const;",
     "// SAFETY: Both assertions preserve the boolean transformation.\nconst value = (!(input as unknown)) as boolean;",
     "// SAFETY: Both assertions preserve the comparison result.\nconst value = ((input as unknown) === other) as boolean;",
+    "const value = <Result>input;",
+    "const value = <const>(<const>input);",
   ],
   invalid: [
     {
@@ -69,6 +71,14 @@ ruleTester.run("anti-slop/no-chained-type-assertions", noChainedTypeAssertionsRu
     },
     {
       code: "// SAFETY: The operand and result contracts are checked externally.\nconst value = (first ?? (second as unknown)) as Result;",
+      errors: [error],
+    },
+    {
+      code: "const value = <Result>(<unknown>input);",
+      errors: [error],
+    },
+    {
+      code: "const bridge = <unknown>readExternal(); const value = <Result>bridge;",
       errors: [error],
     },
   ],
