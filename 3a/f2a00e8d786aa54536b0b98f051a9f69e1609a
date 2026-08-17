@@ -1,0 +1,24 @@
+examples/with-nuxt/package.json
+  s_45e6fac1651d3a::t_cf8d23698367d1 19
+examples/with-next/package.json
+  s_45e6fac1651d3a::t_cf8d23698367d1 18
+  s_45e6fac1651d3a::t_1fc781efb8ebb0 16
+apps/docs/package.json
+  s_45e6fac1651d3a::t_29018e2385b126 22,24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "3af2a00e8d786aa54536b0b98f051a9f69e1609a",
+  "prompts": {},
+  "sessions": {
+    "s_45e6fac1651d3a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00a1a-d2bc-70f1-a84a-ab21c0e21e43",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
