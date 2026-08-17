@@ -1,14 +1,15 @@
+import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vite-plus/test";
 import {
   MARIMO_PAGE_PROTOCOL_VERSION,
   encodePageCellPayload,
-  isCompiledMarimoPage,
-  isMarimoPageCellPayload,
-  isMarimoPageCellReferencePayload,
   pageCellReferencePayload,
   pageCellPayload,
+  parseCompiledMarimoPage,
+  parseMarimoPageSerializedCellPayload,
   projectPageCellPayloads,
   type CompiledMarimoPage,
+  type JsonValue,
 } from "../src/protocol";
 
 describe("marimo page protocol", () => {
@@ -71,20 +72,141 @@ describe("marimo page protocol", () => {
     expect(encoded).toMatch(/^[A-Za-z0-9_-]+$/);
   });
 
-  it("validates compiler and browser records at the v2 boundary", () => {
+  it("parses compiler and browser records at the v2 boundary", () => {
     const page = compiledPage();
     const payload = pageCellPayload(page, page.cells[0]!);
     const reference = pageCellReferencePayload(page, page.cells[0]!);
 
     expect(MARIMO_PAGE_PROTOCOL_VERSION).toBe(2);
-    expect(isCompiledMarimoPage(page)).toBe(true);
-    expect(isMarimoPageCellPayload(payload)).toBe(true);
-    expect(isMarimoPageCellReferencePayload(reference)).toBe(true);
-    expect(isCompiledMarimoPage({ ...page, cells: [payload.cell] })).toBe(false);
-    expect(isMarimoPageCellPayload({ ...payload, protocolVersion: 1 })).toBe(false);
-    expect(isMarimoPageCellReferencePayload({ ...reference, appId: "" })).toBe(false);
+    expect(parseCompiledMarimoPage(jsonValue(page))).toEqual(page);
+    expect(parseMarimoPageSerializedCellPayload(jsonValue(payload))).toEqual(payload);
+    expect(parseMarimoPageSerializedCellPayload(jsonValue(reference))).toEqual(reference);
+    expect(parseCompiledMarimoPage(jsonValue({ ...page, cells: [payload.cell] }))).toBeUndefined();
+    expect(
+      parseMarimoPageSerializedCellPayload(jsonValue({ ...payload, protocolVersion: 1 })),
+    ).toBeUndefined();
+    expect(
+      parseMarimoPageSerializedCellPayload(jsonValue({ ...reference, appId: "" })),
+    ).toBeUndefined();
+  });
+
+  it("requires exactly one own payload discriminator", () => {
+    const page = compiledPage();
+    const payload = pageCellPayload(page, page.cells[0]!);
+
+    expect(
+      parseMarimoPageSerializedCellPayload(jsonValue({ ...payload, appId: "marimo-test" })),
+    ).toBeUndefined();
+    expect(
+      parseMarimoPageSerializedCellPayload(
+        jsonValue({ protocolVersion: payload.protocolVersion, cell: payload.cell }),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("rejects boxed strings and non-plain protocol records", () => {
+    const page = compiledPage();
+    const reference = pageCellReferencePayload(page, page.cells[0]!);
+    const boxedAppId = defineRuntimeProperty(jsonValue(reference), "appId", Object("marimo-test"));
+
+    expect(parseMarimoPageSerializedCellPayload(boxedAppId)).toBeUndefined();
+    for (const value of [
+      runtimeJsonValue(() => 1),
+      runtimeJsonValue(new Date("2026-08-16T00:00:00Z")),
+      runtimeJsonValue(new Map([["appId", "marimo-test"]])),
+    ]) {
+      expect(parseMarimoPageSerializedCellPayload(value)).toBeUndefined();
+      expect(parseCompiledMarimoPage(value)).toBeUndefined();
+    }
+  });
+
+  it("parses protocol records from another JavaScript realm", () => {
+    const page = compiledPage();
+    const foreignPage: JsonValue = runInNewContext("JSON.parse(source)", {
+      source: JSON.stringify(page),
+    });
+
+    expect(parseCompiledMarimoPage(foreignPage)).toEqual(page);
+  });
+
+  it("retains validated compiler output data", () => {
+    const page = compiledPage();
+    if (!page.cells[0]?.output) throw new Error("Expected compiled page output");
+    const data: JsonValue = JSON.parse('{"series":[1,2,3]}');
+    page.cells[0].output.data = data;
+
+    const parsed = parseCompiledMarimoPage(runtimeJsonValue(page));
+
+    expect(parsed?.cells[0]?.output?.data).toBe(data);
+  });
+
+  it("rejects sparse compiler output data", () => {
+    const page = compiledPage();
+    if (!page.cells[0]?.output) throw new Error("Expected compiled page output");
+    const data: JsonValue[] = [];
+    data.length = 1;
+    page.cells[0].output.data = data;
+
+    expect(parseCompiledMarimoPage(runtimeJsonValue(page))).toBeUndefined();
+  });
+
+  it("rejects protocol records with an arbitrary null-root prototype", () => {
+    const prototype = Object.create(null);
+    Object.defineProperty(prototype, "inherited", {
+      enumerable: true,
+      value: "not an own JSON field",
+    });
+    const page = Object.assign(Object.create(prototype), jsonValue(compiledPage()));
+
+    expect(parseCompiledMarimoPage(runtimeJsonValue(page))).toBeUndefined();
+  });
+
+  it("preserves __proto__ as own data in parsed dictionaries", () => {
+    const page = compiledPage();
+    if (!page.app || !page.cells[0]?.output) throw new Error("Expected compiled page fixtures");
+    page.cells[0].output.data = JSON.parse('{"__proto__":{"polluted":true}}');
+    page.app.assets.links = [JSON.parse('{"__proto__":"/styles.css"}')];
+    page.app.assets.headTags = [{ tag: "meta", attrs: JSON.parse('{"__proto__":"safe"}') }];
+
+    const parsed = parseCompiledMarimoPage(jsonValue(page));
+    const outputData = parsed?.cells[0]?.output?.data;
+    const link = parsed?.app?.assets.links[0];
+    const attrs = parsed?.app?.assets.headTags?.[0]?.attrs;
+    if (outputData === undefined || link === undefined || attrs === undefined) {
+      throw new Error("Expected parsed protocol dictionaries");
+    }
+
+    expect(Object.getOwnPropertyDescriptor(outputData, "__proto__")?.value).toEqual({
+      polluted: true,
+    });
+    expect(Object.getOwnPropertyDescriptor(link, "__proto__")?.value).toBe("/styles.css");
+    expect(Object.getOwnPropertyDescriptor(attrs, "__proto__")?.value).toBe("safe");
+    expect(Object.getPrototypeOf(outputData)).toBe(Object.prototype);
+    expect(Object.getPrototypeOf(link)).toBe(Object.prototype);
+    expect(Object.getPrototypeOf(attrs)).toBe(Object.prototype);
+    expect(Object.hasOwn(Object.prototype, "polluted")).toBe(false);
   });
 });
+
+function jsonValue<T>(value: T): JsonValue {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function defineRuntimeProperty<T, V>(owner: T, key: string, value: V): T {
+  Object.defineProperty(owner, key, {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true,
+  });
+  return owner;
+}
+
+function runtimeJsonValue<T>(value: T): JsonValue {
+  const container: JsonValue[] = [null];
+  Object.defineProperty(container, 0, { value });
+  return container[0]!;
+}
 
 function compiledPage(): CompiledMarimoPage {
   return {

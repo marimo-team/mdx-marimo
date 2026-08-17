@@ -25,8 +25,6 @@ import { collectMarimoPage } from "./collect";
 import { applyTreeEdits, reportDiagnostic } from "./edits";
 import { pageRequest, publicFilename, type MarimoPageIdentity } from "./identity";
 
-type CompilerModule = typeof import("../node/compile");
-
 export type MarimoElementOptions = {
   name?: string;
   runtimeImport?: string;
@@ -110,7 +108,7 @@ async function defaultCompile(
   request: MarimoPageRequest,
   options: CompileMarimoPageOptions,
 ): Promise<CompiledMarimoPage> {
-  const { compileMarimoPage } = (await import("@marimo-team/mdx-marimo/node")) as CompilerModule;
+  const { compileMarimoPage } = await import("@marimo-team/mdx-marimo/node");
   return compileMarimoPage(request, options);
 }
 

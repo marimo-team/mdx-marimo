@@ -18,7 +18,6 @@ import { parseFenceOptions } from "../../authoring/options";
 import type { CompileMarimoPageOptions } from "../../node/compile";
 import { pageRequest, publicFilename, type MarimoPageIdentity } from "../../remark/identity";
 
-type CompilerModule = typeof import("../../node/compile");
 type MarkdownToken = ReturnType<MarkdownIt["parse"]>[number];
 
 export type MarimoVitePressOptions = {
@@ -42,6 +41,11 @@ type CollectedPage = {
   diagnostics: MarimoDiagnostic[];
   edits: MarimoEdit[];
   pyproject?: string;
+};
+
+type FenceInfo = {
+  language: string;
+  meta: string;
 };
 
 type MarimoPluginContext = {
@@ -169,15 +173,16 @@ function collectMarimoPage(markdown: MarkdownIt, source: string): CollectedPage 
     });
   }
 
-  return {
+  const collected: CollectedPage = {
     cells,
     diagnostics,
     edits,
-    ...(pyproject === undefined ? {} : { pyproject }),
   };
+  if (pyproject !== undefined) collected.pyproject = pyproject;
+  return collected;
 }
 
-function fenceInfo(info: string): { language: string; meta: string } {
+function fenceInfo(info: string): FenceInfo {
   const trimmed = info.trim();
   const separator = trimmed.search(/\s/);
   if (separator === -1) return { language: trimmed, meta: "" };
@@ -209,7 +214,7 @@ async function defaultCompile(
   request: MarimoPageRequest,
   options: CompileMarimoPageOptions,
 ): Promise<CompiledMarimoPage> {
-  const { compileMarimoPage } = (await import("@marimo-team/mdx-marimo/node")) as CompilerModule;
+  const { compileMarimoPage } = await import("@marimo-team/mdx-marimo/node");
   return compileMarimoPage(request, options);
 }
 

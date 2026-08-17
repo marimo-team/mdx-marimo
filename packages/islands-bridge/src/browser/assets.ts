@@ -1,9 +1,7 @@
 import type { MarimoRuntimeAssets, MarimoPageRuntime } from "../protocol";
 
 type MarimoIslandModule = {
-  initialize?: () => Promise<void> | void;
-  canReplaceApp?: () => boolean;
-  stopApp?: (appId?: string) => Promise<void> | void;
+  readonly [Symbol.toStringTag]: "Module";
 };
 
 type MarimoAssetsLease = {
@@ -12,8 +10,12 @@ type MarimoAssetsLease = {
   release: () => void;
 };
 
+type RuntimeAssetHost = {
+  readonly isConnected: boolean;
+};
+
 type AppLease = {
-  host: Element;
+  host: RuntimeAssetHost;
   revision: string;
 };
 
@@ -30,7 +32,7 @@ type AppAssetsState = {
 
 type ActiveApp = {
   app: MarimoPageRuntime;
-  hosts: Element[];
+  hosts: RuntimeAssetHost[];
   replaceable: boolean;
   revision: string;
   state: AppAssetsState;
@@ -47,21 +49,38 @@ type RuntimeDocumentState = {
   resolvedModules: Map<string, MarimoIslandModule>;
 };
 
-type MarimoMountConfig = Record<string, unknown> & {
+type MarimoMountConfig = {
   version?: string;
 };
 
+type MarimoMountConfigDictionary = {
+  version?: string | null;
+};
+
+type MarimoMountConfigInput =
+  | MarimoMountConfigDictionary
+  | bigint
+  | boolean
+  | null
+  | number
+  | string
+  | symbol;
+
+type MarimoExportContext = {
+  trusted: true;
+  notebookCode?: string;
+};
+
+const runtimeStateSymbol: unique symbol = Symbol.for("@marimo-team/islands-bridge/runtime-state");
+
 declare global {
   interface Window {
+    [runtimeStateSymbol]?: RuntimeDocumentState;
     __MARIMO_MOUNT_CONFIG__?: MarimoMountConfig;
-    __MARIMO_EXPORT_CONTEXT__?: {
-      trusted: true;
-      notebookCode?: string;
-    };
+    __MARIMO_EXPORT_CONTEXT__?: MarimoExportContext;
   }
 }
 
-const runtimeStateSymbol = Symbol.for("@marimo-team/islands-bridge/runtime-state");
 const safeSessionHandoffVersion = [0, 23, 16] as const;
 const appRevisions = new WeakMap<MarimoPageRuntime, AppRevision>();
 
@@ -76,7 +95,7 @@ export function hasConfirmedSoftNavigationAssets(app: MarimoPageRuntime): boolea
   return supportsSoftNavigation(app, modules);
 }
 
-export function acquireAssets(app: MarimoPageRuntime, host: Element): MarimoAssetsLease {
+export function acquireAssets(app: MarimoPageRuntime, host: RuntimeAssetHost): MarimoAssetsLease {
   const reload = claimRuntime(app.assets);
   if (reload) return { activate: () => reload, ready: reload, release: () => {} };
 
@@ -107,7 +126,7 @@ export function acquireAssets(app: MarimoPageRuntime, host: Element): MarimoAsse
   };
   const activate = () =>
     activateApp(app, state).then((modules) => supportsSoftNavigation(app, modules));
-  const ready = activate().catch((error: unknown) => {
+  const ready = activate().catch((error) => {
     release();
     throw error;
   });
@@ -116,10 +135,7 @@ export function acquireAssets(app: MarimoPageRuntime, host: Element): MarimoAsse
 }
 
 function runtimeDocumentState(): RuntimeDocumentState {
-  const target = window as typeof window & {
-    [key: symbol]: RuntimeDocumentState | undefined;
-  };
-  return (target[runtimeStateSymbol] ??= {
+  return (window[runtimeStateSymbol] ??= {
     appAssets: new Map(),
     loadedModules: new Map(),
     resolvedModules: new Map(),
@@ -199,7 +215,7 @@ async function activateApp(
     ensureExportContext(app.notebookCode);
     try {
       modules ??= await loadModules(app.assets.moduleScripts);
-    } catch (error: unknown) {
+    } catch (error) {
       cleanupInactiveApp(app.id, state);
       throw error;
     }
@@ -219,9 +235,9 @@ async function activateApp(
     const activationHosts = hosts;
     try {
       if (!isFirstApp || softNavigation) {
-        await Promise.all(modules.map(async (runtimeModule) => runtimeModule.initialize?.()));
+        await Promise.all(modules.map(initializeRuntimeModule));
       }
-    } catch (error: unknown) {
+    } catch (error) {
       if (softNavigation) await stopAppOrReload(modules);
       cleanupInactiveApp(app.id, state);
       throw error;
@@ -282,8 +298,8 @@ function appRevision(app: MarimoPageRuntime): string {
   return revision;
 }
 
-function liveHosts(state: AppAssetsState, revision?: string): Element[] {
-  const hosts = new Set<Element>();
+function liveHosts(state: AppAssetsState, revision?: string): RuntimeAssetHost[] {
+  const hosts = new Set<RuntimeAssetHost>();
   for (const lease of state.leases) {
     if (revision !== undefined && lease.revision !== revision) continue;
     if (lease.host.isConnected === false) continue;
@@ -292,7 +308,7 @@ function liveHosts(state: AppAssetsState, revision?: string): Element[] {
   return [...hosts];
 }
 
-function sameHosts(left: Element[], right: Element[]): boolean {
+function sameHosts(left: RuntimeAssetHost[], right: RuntimeAssetHost[]): boolean {
   if (left.length !== right.length) return false;
   const rightHosts = new Set(right);
   return left.every((host) => rightHosts.has(host));
@@ -309,8 +325,8 @@ async function deactivateApp(activeApp: ActiveApp): Promise<void> {
 
 async function stopAppOrReload(modules: MarimoIslandModule[], appId?: string): Promise<void> {
   try {
-    await Promise.all(modules.map(async (runtimeModule) => runtimeModule.stopApp?.(appId)));
-  } catch (error: unknown) {
+    await Promise.all(modules.map((runtimeModule) => stopRuntimeModule(runtimeModule, appId)));
+  } catch (error) {
     console.error(`Failed to stop marimo app${appId ? ` ${appId}` : ""}`, error);
     return await reloadDocument();
   }
@@ -334,14 +350,48 @@ function cleanupAppState(appId: string, state: AppAssetsState): void {
 
 function supportsSoftNavigation(app: MarimoPageRuntime, modules: MarimoIslandModule[]): boolean {
   if (!hasSafeSessionHandoff(app.assets.version)) return false;
-  const runtimes = modules.filter((runtimeModule) => runtimeModule.initialize);
+  const runtimes = modules.filter(hasRuntimeInitializer);
   return (
     runtimes.length > 0 &&
     runtimes.every(
-      (runtimeModule) =>
-        runtimeModule.canReplaceApp?.() === true && typeof runtimeModule.stopApp === "function",
+      (runtimeModule) => canReplaceRuntimeApp(runtimeModule) && hasRuntimeStopper(runtimeModule),
     )
   );
+}
+
+function hasRuntimeInitializer(runtimeModule: MarimoIslandModule): boolean {
+  const initialize: unknown = Object.getOwnPropertyDescriptor(runtimeModule, "initialize")?.value;
+  return initialize instanceof Function;
+}
+
+async function initializeRuntimeModule(runtimeModule: MarimoIslandModule): Promise<void> {
+  const initialize: unknown = Object.getOwnPropertyDescriptor(runtimeModule, "initialize")?.value;
+  if (initialize instanceof Function) {
+    await initialize.call(runtimeModule);
+  }
+}
+
+function canReplaceRuntimeApp(runtimeModule: MarimoIslandModule): boolean {
+  const canReplaceApp: unknown = Object.getOwnPropertyDescriptor(
+    runtimeModule,
+    "canReplaceApp",
+  )?.value;
+  return canReplaceApp instanceof Function && canReplaceApp.call(runtimeModule) === true;
+}
+
+function hasRuntimeStopper(runtimeModule: MarimoIslandModule): boolean {
+  const stopApp: unknown = Object.getOwnPropertyDescriptor(runtimeModule, "stopApp")?.value;
+  return stopApp instanceof Function;
+}
+
+async function stopRuntimeModule(
+  runtimeModule: MarimoIslandModule,
+  appId: string | undefined,
+): Promise<void> {
+  const stopApp: unknown = Object.getOwnPropertyDescriptor(runtimeModule, "stopApp")?.value;
+  if (stopApp instanceof Function) {
+    await stopApp.call(runtimeModule, appId);
+  }
 }
 
 function hasSafeSessionHandoff(version: string | undefined): boolean {
@@ -357,11 +407,39 @@ function hasSafeSessionHandoff(version: string | undefined): boolean {
 
 function ensureMountConfig(assets: MarimoRuntimeAssets): void {
   if (!assets.version) return;
-  const mountConfig = window.__MARIMO_MOUNT_CONFIG__;
-  if (mountConfig && typeof mountConfig === "object") {
-    mountConfig.version ??= assets.version;
-  } else {
-    window.__MARIMO_MOUNT_CONFIG__ = { version: assets.version };
+  try {
+    const mountConfig: MarimoMountConfigInput | undefined = window.__MARIMO_MOUNT_CONFIG__;
+    if (isMarimoMountConfigDictionary(mountConfig)) {
+      if (mountConfig.version === undefined || mountConfig.version === null) {
+        Reflect.set(mountConfig, "version", assets.version);
+      }
+    } else {
+      Reflect.set(window, "__MARIMO_MOUNT_CONFIG__", { version: assets.version });
+    }
+  } catch {
+    return;
+  }
+}
+
+function isMarimoMountConfigDictionary(
+  value: MarimoMountConfigInput | undefined,
+): value is MarimoMountConfigDictionary {
+  if (value === undefined || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype === Object.prototype) return true;
+  if (prototype === null) {
+    const brand: unknown = Object.getOwnPropertyDescriptor(value, Symbol.toStringTag)?.value;
+    return brand !== "Module";
+  }
+  if (Object.getPrototypeOf(prototype) !== null) return false;
+  const constructor = Object.getOwnPropertyDescriptor(prototype, "constructor")?.value;
+  if (!constructor || constructor.prototype !== prototype) return false;
+  try {
+    return (
+      Function.prototype.toString.call(constructor) === Function.prototype.toString.call(Object)
+    );
+  } catch {
+    return false;
   }
 }
 
@@ -372,10 +450,9 @@ function ensureExportContext(notebookCode: string | undefined): void {
   ) {
     return;
   }
-  window.__MARIMO_EXPORT_CONTEXT__ = {
-    trusted: true,
-    ...(notebookCode ? { notebookCode } : {}),
-  };
+  const context: MarimoExportContext = { trusted: true };
+  if (notebookCode) context.notebookCode = notebookCode;
+  window.__MARIMO_EXPORT_CONTEXT__ = context;
 }
 
 function ensureHeadTags(tags: NonNullable<MarimoRuntimeAssets["headTags"]>): void {
@@ -438,11 +515,7 @@ function ensureModule(src: string): Promise<MarimoIslandModule> {
   const existing = state.loadedModules.get(href);
   if (existing) return existing;
 
-  const promise = import(
-    /* webpackIgnore: true */
-    /* @vite-ignore */
-    href
-  ) as Promise<MarimoIslandModule>;
+  const promise = importRuntimeModule(href);
   void promise.then(
     (runtimeModule) => {
       state.resolvedModules.set(href, runtimeModule);
@@ -453,4 +526,13 @@ function ensureModule(src: string): Promise<MarimoIslandModule> {
   );
   state.loadedModules.set(href, promise);
   return promise;
+}
+
+async function importRuntimeModule(href: string): Promise<MarimoIslandModule> {
+  const namespace: MarimoIslandModule = await import(
+    /* webpackIgnore: true */
+    /* @vite-ignore */
+    href
+  );
+  return namespace;
 }

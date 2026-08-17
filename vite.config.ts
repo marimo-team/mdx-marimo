@@ -1,8 +1,11 @@
 import { defineConfig } from "vite-plus";
 
+import { antiSlopIgnorePatterns, antiSlopRules } from "./tools/oxlint/anti-slop/preset.ts";
+
 export default defineConfig({
   fmt: {
     ignorePatterns: [
+      ...antiSlopIgnorePatterns,
       "apps/docs/.next/**",
       "apps/docs/.output/**",
       "apps/docs/.source/**",
@@ -20,6 +23,7 @@ export default defineConfig({
   },
   lint: {
     ignorePatterns: [
+      ...antiSlopIgnorePatterns,
       "apps/docs/.output/**",
       "apps/docs/.source/**",
       "apps/docs/src/routeTree.gen.ts",
@@ -32,8 +36,14 @@ export default defineConfig({
       "examples/*/dist/**",
       "packages/*/dist/**",
     ],
+    jsPlugins: [{ name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" }],
     options: {
+      denyWarnings: true,
+      reportUnusedDisableDirectives: "error",
       typeAware: true,
+    },
+    rules: {
+      ...antiSlopRules,
     },
     overrides: [
       {

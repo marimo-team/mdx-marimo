@@ -21,8 +21,8 @@ export function collectMarimoPage(tree: Root, file: MessageFile): CollectedMarim
   let configLine: number | undefined;
 
   visit(tree, "code", (node, index, parent) => {
-    if (typeof index !== "number" || !parent || !Array.isArray(parent.children)) return;
-    const editParent = parent as ParentNode;
+    if (index === undefined || parent === undefined) return;
+    const editParent: ParentNode = parent;
     if (isMarimoConfigFence(node.lang)) {
       if (pyproject === undefined) {
         pyproject = node.value;

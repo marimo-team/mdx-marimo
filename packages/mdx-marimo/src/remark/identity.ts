@@ -5,9 +5,24 @@ import {
   type MarimoPageRequest,
 } from "@marimo-team/mdx-marimo/bridge/protocol";
 
-export type MarimoPageIdentity =
-  | string
-  | ((document: { filename: string; filePath: string | undefined; source: string }) => string);
+export type MarimoPageIdentityContext = {
+  filename: string;
+  filePath: string | undefined;
+  source: string;
+};
+
+export type MarimoPageIdentity = string | ((document: MarimoPageIdentityContext) => string);
+
+type PageIdentitySource = MarimoPageIdentityContext & {
+  cells: MarimoCellRequest[];
+  pyproject: string | undefined;
+};
+
+type StableIdentityInput = {
+  cells: MarimoCellRequest[];
+  pyproject: string | undefined;
+  source: string;
+};
 
 export function pageRequest({
   cells,
@@ -46,16 +61,10 @@ export function publicFilename(filename: string, cwd: string | undefined): strin
 
 function resolveIdentity(
   identity: MarimoPageIdentity | undefined,
-  context: {
-    cells: MarimoCellRequest[];
-    filePath: string | undefined;
-    filename: string;
-    pyproject: string | undefined;
-    source: string;
-  },
+  context: PageIdentitySource,
 ): string {
-  if (typeof identity === "string") return identity;
-  if (typeof identity === "function") {
+  if (identity !== undefined) {
+    if (isIdentityString(identity)) return identity;
     return identity({
       filePath: context.filePath,
       filename: context.filename,
@@ -76,7 +85,13 @@ function isBundlerEntry(filename: string | undefined): boolean {
   return filename !== undefined && /_mdx_bundler_entry_point-[^/\\]+\.mdx$/.test(filename);
 }
 
-function stableHash(value: unknown): string {
+function isIdentityString(identity: MarimoPageIdentity): identity is string {
+  return (
+    Object(identity) !== identity && Object.prototype.toString.call(identity) === "[object String]"
+  );
+}
+
+function stableHash(value: StableIdentityInput): string {
   const source = JSON.stringify(value);
   let hash = 5381;
   for (let index = 0; index < source.length; index += 1) {

@@ -9,14 +9,16 @@ import { applyMarimoShadowTheme, installMarimoShadowThemeBridge } from "./shadow
 
 export type { MarimoThemeMode, MarimoThemeResolver } from "./theme-mode";
 
+export type MarimoThemeBridgeOptions = {
+  theme?: MarimoThemeMode;
+  themeResolver?: MarimoThemeResolver;
+};
+
 const themeBridges = new WeakMap<HTMLElement, { refresh: () => void }>();
 
 export function installMarimoThemeBridge(
   host: HTMLElement,
-  options: {
-    theme?: MarimoThemeMode;
-    themeResolver?: MarimoThemeResolver;
-  } = {},
+  options: MarimoThemeBridgeOptions = {},
 ): () => void {
   const themeMode = () =>
     options.theme === undefined || options.theme === "auto"

@@ -4,11 +4,12 @@ import { join } from "node:path";
 import { describe, expect, it } from "vite-plus/test";
 import {
   MARIMO_PAGE_PROTOCOL_VERSION,
-  isCompiledMarimoPage,
+  parseCompiledMarimoPage,
   type CompiledMarimoPage,
+  type JsonValue,
   type MarimoCellOptions,
   type MarimoPageRequest,
-} from "@marimo-team/mdx-marimo/bridge/protocol";
+} from "../src/bridge/protocol";
 
 const pythonHarness = String.raw`
 import asyncio
@@ -464,8 +465,9 @@ function compilePage(request: MarimoPageRequest): CompiledMarimoPage {
   if (result.status !== 0) {
     throw new Error(result.stderr || "islands compiler failed");
   }
-  const page: unknown = JSON.parse(result.stdout);
-  if (!isCompiledMarimoPage(page)) {
+  const decoded: JsonValue = JSON.parse(result.stdout);
+  const page = parseCompiledMarimoPage(decoded);
+  if (!page) {
     throw new Error("islands compiler returned an invalid page");
   }
   return page;

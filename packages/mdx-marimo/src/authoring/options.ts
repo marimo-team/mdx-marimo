@@ -4,22 +4,23 @@ import type {
   MarimoLanguage,
 } from "@marimo-team/mdx-marimo/bridge/protocol";
 
-const booleanKeys = new Set([
-  "echo",
-  "output",
-  "error",
-  "include",
-  "eval",
-  "editor",
-  "disabled",
-  "server-output",
-  "unparsable",
-  "hide-code",
-  "hide-output",
-]);
-
-const stringKeys = new Set(["query", "engine", "name"]);
-const numberKeys = new Set(["column"]);
+type RawFenceOptions = {
+  echo?: boolean;
+  output?: boolean;
+  error?: boolean;
+  include?: boolean;
+  eval?: boolean;
+  editor?: boolean;
+  disabled?: boolean;
+  "server-output"?: boolean;
+  unparsable?: boolean;
+  "hide-code"?: boolean;
+  "hide-output"?: boolean;
+  query?: string;
+  engine?: string;
+  name?: string;
+  column?: number;
+};
 
 export type ParsedFenceOptions = {
   options: MarimoCellOptionsPatch;
@@ -30,7 +31,7 @@ export function parseFenceOptions(
   language: MarimoLanguage,
   meta: string | null | undefined,
 ): ParsedFenceOptions {
-  const rawOptions: Record<string, string | boolean | number> = {};
+  const rawOptions: RawFenceOptions = {};
   const diagnostics: MarimoDiagnostic[] = [];
   const seen = new Set<string>();
   for (const token of metaTokens(meta ?? "")) {
@@ -46,25 +47,42 @@ export function parseFenceOptions(
       continue;
     }
     seen.add(key);
-    if (booleanKeys.has(key)) {
-      rawOptions[key] = parseBoolean(rawValue);
-    } else if (stringKeys.has(key)) {
-      rawOptions[key] = String(parseScalar(rawValue));
-    } else if (numberKeys.has(key)) {
-      const value = Number(parseScalar(rawValue));
-      if (Number.isNaN(value)) {
+    switch (key) {
+      case "echo":
+      case "output":
+      case "error":
+      case "include":
+      case "eval":
+      case "editor":
+      case "disabled":
+      case "server-output":
+      case "unparsable":
+      case "hide-code":
+      case "hide-output":
+        rawOptions[key] = parseBoolean(rawValue);
+        break;
+      case "query":
+      case "engine":
+      case "name":
+        rawOptions[key] = parseString(rawValue);
+        break;
+      case "column": {
+        const value = parseNumber(rawValue);
+        if (Number.isNaN(value)) {
+          diagnostics.push({
+            severity: "warning",
+            message: `Invalid numeric marimo option: ${key}`,
+          });
+        } else {
+          rawOptions.column = value;
+        }
+        break;
+      }
+      default:
         diagnostics.push({
           severity: "warning",
-          message: `Invalid numeric marimo option: ${key}`,
+          message: `Unknown marimo option: ${key}`,
         });
-      } else {
-        rawOptions[key] = value;
-      }
-    } else {
-      diagnostics.push({
-        severity: "warning",
-        message: `Unknown marimo option: ${key}`,
-      });
     }
   }
   return { options: normalizeCellOptions(language, rawOptions), diagnostics };
@@ -72,62 +90,51 @@ export function parseFenceOptions(
 
 function normalizeCellOptions(
   language: MarimoLanguage,
-  rawOptions: Record<string, string | boolean | number>,
+  rawOptions: RawFenceOptions,
 ): MarimoCellOptionsPatch {
   const render: NonNullable<MarimoCellOptionsPatch["render"]> = {};
   const execution: NonNullable<MarimoCellOptionsPatch["execution"]> = {};
   const marimo: NonNullable<MarimoCellOptionsPatch["marimo"]> = {};
-  const renderKeys = {
-    echo: "source",
-    output: "output",
-    include: "include",
-    editor: "editor",
-    error: "error",
-    "server-output": "serverOutput",
-  } as const;
-  for (const [source, target] of Object.entries(renderKeys)) {
-    if (source in rawOptions) {
-      render[target] = readBoolean(rawOptions[source]);
-    }
+  if (rawOptions.echo !== undefined) render.source = rawOptions.echo;
+  if (rawOptions.output !== undefined) render.output = rawOptions.output;
+  if (rawOptions.include !== undefined) render.include = rawOptions.include;
+  if (rawOptions.editor !== undefined) render.editor = rawOptions.editor;
+  if (rawOptions.error !== undefined) render.error = rawOptions.error;
+  if (rawOptions["server-output"] !== undefined) {
+    render.serverOutput = rawOptions["server-output"];
   }
   if (render.editor) render.source = true;
-  const hideCode = readBoolean(rawOptions["hide-code"]);
+  const hideCode = rawOptions["hide-code"] ?? false;
   if (hideCode) {
     render.source = false;
     render.editor = false;
   }
-  if (readBoolean(rawOptions["hide-output"])) render.output = false;
-  if ("eval" in rawOptions) execution.enabled = readBoolean(rawOptions.eval);
-  if ("disabled" in rawOptions) marimo.disabled = readBoolean(rawOptions.disabled);
-  if ("unparsable" in rawOptions) {
-    marimo.unparsable = readBoolean(rawOptions.unparsable);
+  if (rawOptions["hide-output"]) render.output = false;
+  if (rawOptions.eval !== undefined) execution.enabled = rawOptions.eval;
+  if (rawOptions.disabled !== undefined) marimo.disabled = rawOptions.disabled;
+  if (rawOptions.unparsable !== undefined) {
+    marimo.unparsable = rawOptions.unparsable;
     if (marimo.unparsable && !hideCode) render.source = true;
   }
   if (marimo.disabled || marimo.unparsable) execution.enabled = false;
 
   const options: MarimoCellOptionsPatch = {
     language,
-    ...(Object.keys(render).length > 0 ? { render } : {}),
-    ...(Object.keys(execution).length > 0 ? { execution } : {}),
-    ...(Object.keys(marimo).length > 0 ? { marimo } : {}),
   };
+  if (Object.keys(render).length > 0) options.render = render;
+  if (Object.keys(execution).length > 0) options.execution = execution;
+  if (Object.keys(marimo).length > 0) options.marimo = marimo;
   const query = rawOptions.query;
   const engine = rawOptions.engine;
-  if (language === "sql" && (typeof query === "string" || typeof engine === "string")) {
-    options.sql = {};
-    if (typeof query === "string") options.sql.outputName = query;
-    if (typeof engine === "string") options.sql.engine = engine;
+  if (language === "sql" && (query !== undefined || engine !== undefined)) {
+    const sql: NonNullable<MarimoCellOptionsPatch["sql"]> = {};
+    if (query !== undefined) sql.outputName = query;
+    if (engine !== undefined) sql.engine = engine;
+    options.sql = sql;
   }
-  if (typeof rawOptions.name === "string") options.name = rawOptions.name;
-  if (typeof rawOptions.column === "number") options.column = rawOptions.column;
+  if (rawOptions.name !== undefined) options.name = rawOptions.name;
+  if (rawOptions.column !== undefined) options.column = rawOptions.column;
   return options;
-}
-
-function readBoolean(value: string | boolean | number | undefined, fallback = false): boolean {
-  if (value === undefined) return fallback;
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value !== 0;
-  return value.toLowerCase() !== "false";
 }
 
 function metaTokens(meta: string): string[] {
@@ -149,18 +156,20 @@ function normalizeOptionKey(key: string): string {
 
 function parseBoolean(value: string | undefined): boolean {
   if (value === undefined) return true;
-  const scalar = parseScalar(value);
-  if (typeof scalar === "boolean") return scalar;
-  return String(scalar).toLowerCase() !== "false";
+  return stripQuotes(value.trim()).toLowerCase() !== "false";
 }
 
-function parseScalar(value: string | undefined): string | boolean | number {
-  if (value === undefined) return true;
+function parseString(value: string | undefined): string {
+  if (value === undefined) return "true";
   const trimmed = stripQuotes(value.trim());
-  if (/^(true|false)$/i.test(trimmed)) return trimmed.toLowerCase() === "true";
-  const number = Number(trimmed);
-  if (trimmed && !Number.isNaN(number) && String(number) === trimmed) return number;
+  if (/^(true|false)$/i.test(trimmed)) return trimmed.toLowerCase();
   return trimmed;
+}
+
+function parseNumber(value: string | undefined): number {
+  if (value === undefined || /^true$/i.test(stripQuotes(value.trim()))) return 1;
+  if (/^false$/i.test(stripQuotes(value.trim()))) return 0;
+  return Number(stripQuotes(value.trim()));
 }
 
 function stripQuotes(value: string): string {

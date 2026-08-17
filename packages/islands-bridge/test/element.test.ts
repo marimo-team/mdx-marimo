@@ -1,10 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { mountMarimoIsland, reconnectMarimoIsland } from "../src/browser/island";
+import type { MarimoIslandElement } from "../src/element";
 import {
-  defineMarimoIslandElement,
-  mountMarimoIslandElement,
-  type MarimoIslandElement,
-} from "../src/element";
+  createMarimoIslandElementBridge,
+  type MarimoIslandElementRuntime,
+} from "../src/element/bridge";
 import {
   encodePageCellPayload,
   MARIMO_PAGE_PROTOCOL_VERSION,
@@ -15,12 +14,19 @@ import {
   type MarimoPageSerializedCellPayload,
 } from "../src/protocol";
 
-vi.mock("../src/browser/island", () => ({
-  assertCurrentDocument: vi.fn(),
-  mountMarimoIsland: vi.fn(() => vi.fn()),
-  reconnectMarimoIsland: vi.fn(),
-  renderMarimoIslandError: vi.fn(),
-}));
+const assertCurrentDocument = vi.fn<MarimoIslandElementRuntime["assertCurrentDocument"]>();
+const mountMarimoIsland = vi.fn<MarimoIslandElementRuntime["mount"]>(() => vi.fn());
+const reconnectMarimoIsland = vi.fn<MarimoIslandElementRuntime["reconnect"]>();
+const renderMarimoIslandError = vi.fn<MarimoIslandElementRuntime["renderError"]>();
+const runtime = {
+  assertCurrentDocument,
+  mount: mountMarimoIsland,
+  reconnect: reconnectMarimoIsland,
+  renderError: renderMarimoIslandError,
+} satisfies MarimoIslandElementRuntime;
+const bridge = createMarimoIslandElementBridge(runtime);
+const defineMarimoIslandElement = bridge.define;
+const mountMarimoIslandElement = bridge.mount;
 
 const originalCustomElements = Object.getOwnPropertyDescriptor(globalThis, "customElements");
 const originalHTMLElement = Object.getOwnPropertyDescriptor(globalThis, "HTMLElement");
@@ -53,24 +59,25 @@ describe("defineMarimoIslandElement", () => {
     });
 
     const constructor = defineMarimoIslandElement({ name: "marimo-constructor-test" });
-    const element = new constructor!();
+    if (!constructor) throw new Error("Expected a custom element constructor");
+    const element = new constructor();
 
     expect(element).toBeInstanceOf(TestHTMLElement);
-    expect(element).toBeInstanceOf(constructor!);
+    expect(element).toBeInstanceOf(constructor);
   });
 
   it("hydrates a referenced cell after its page app connects", async () => {
     const constructor = installPayloadElement("marimo-reference-test");
     const page = compiledPage();
-    const referenced = new constructor() as PayloadElement;
-    const declaration = new constructor() as PayloadElement;
+    const referenced = new constructor();
+    const declaration = new constructor();
     setPayload(referenced, pageCellReferencePayload(page, page.cells[1]!));
     setPayload(declaration, pageCellPayload(page, page.cells[0]!));
 
     connectElement(referenced);
     await flushMicrotasks();
 
-    const mount = vi.mocked(mountMarimoIsland);
+    const mount = mountMarimoIsland;
     expect(mount).toHaveBeenCalledTimes(1);
     expect(mount.mock.calls[0]![1]).toMatchObject({ app: null, cell: { index: 1 } });
 
@@ -89,32 +96,34 @@ describe("defineMarimoIslandElement", () => {
   });
 
   it("resolves page references across bridge module instances", async () => {
-    const ownerDocument = {} as Document;
-    const firstBridge = await import("../src/element");
+    const ownerDocument = elementDocument(new TestDocument());
+    const firstModule = await import("../src/element/bridge");
+    const firstBridge = firstModule.createMarimoIslandElementBridge(runtime);
     const firstConstructor = installPayloadElement(
       "marimo-cross-module-carrier-test",
-      firstBridge.defineMarimoIslandElement,
+      firstBridge.define,
       ownerDocument,
     );
     const page = compiledPage("marimo-cross-module-app");
-    const declaration = new firstConstructor() as PayloadElement;
+    const declaration = new firstConstructor();
     setPayload(declaration, pageCellPayload(page, page.cells[0]!));
     connectElement(declaration);
     await flushMicrotasks();
 
     vi.resetModules();
-    const secondBridge = await import("../src/element");
+    const secondModule = await import("../src/element/bridge");
+    const secondBridge = secondModule.createMarimoIslandElementBridge(runtime);
     const secondConstructor = installPayloadElement(
       "marimo-cross-module-reference-test",
-      secondBridge.defineMarimoIslandElement,
+      secondBridge.define,
       ownerDocument,
     );
-    const referenced = new secondConstructor() as PayloadElement;
+    const referenced = new secondConstructor();
     setPayload(referenced, pageCellReferencePayload(page, page.cells[1]!));
     connectElement(referenced);
     await flushMicrotasks();
 
-    expect(vi.mocked(mountMarimoIsland).mock.calls.at(-1)?.[1]).toMatchObject({
+    expect(mountMarimoIsland.mock.calls.at(-1)?.[1]).toMatchObject({
       app: { id: "marimo-cross-module-app" },
       cell: { index: 1 },
     });
@@ -127,13 +136,13 @@ describe("defineMarimoIslandElement", () => {
   it("mounts a programmatic payload and replaces it through the element property", async () => {
     const constructor = installPayloadElement("marimo-property-test");
     const page = compiledPage("marimo-property-app");
-    const element = new constructor() as PayloadElement;
+    const element = new constructor();
 
     element.payload = pageCellPayload(page, page.cells[0]!);
     connectElement(element);
     await flushMicrotasks();
 
-    const mount = vi.mocked(mountMarimoIsland);
+    const mount = mountMarimoIsland;
     expect(mount).toHaveBeenCalledOnce();
     expect(mount.mock.calls[0]![1]).toMatchObject({
       app: { id: "marimo-property-app" },
@@ -152,34 +161,184 @@ describe("defineMarimoIslandElement", () => {
     await flushTasks();
   });
 
+  it("returns the assigned programmatic payload by reference", () => {
+    const constructor = installPayloadElement("marimo-property-identity-test");
+    const page = compiledPage("marimo-property-identity-app");
+    const element = new constructor();
+    const payload = pageCellPayload(page, page.cells[0]!);
+
+    element.payload = payload;
+
+    expect(element.payload).toBe(payload);
+  });
+
+  it("rejects a programmatic payload mutated before its queued mount", async () => {
+    const constructor = installPayloadElement("marimo-mutated-property-test");
+    const page = compiledPage("marimo-mutated-property-app");
+    const element = new constructor();
+    const payload = pageCellPayload(page, page.cells[0]!);
+    element.payload = payload;
+    connectElement(element);
+    Reflect.set(payload, "protocolVersion", 999);
+
+    await flushMicrotasks();
+
+    expect(element.payload).toBe(payload);
+    expect(mountMarimoIsland).not.toHaveBeenCalled();
+    expect(renderMarimoIslandError).toHaveBeenCalledOnce();
+    expect(renderMarimoIslandError.mock.calls[0]?.[1]).toEqual(
+      new TypeError("Invalid marimo page cell payload"),
+    );
+    disconnectElement(element);
+    await flushTasks();
+  });
+
+  it("adopts an equal payload reference without remounting the active island", async () => {
+    const constructor = installPayloadElement("marimo-equal-property-test");
+    const page = compiledPage("marimo-equal-property-app");
+    const element = new constructor();
+    const initialPayload = pageCellPayload(page, page.cells[0]!);
+    const replacementPayload = structuredClone(initialPayload);
+    element.payload = initialPayload;
+    connectElement(element);
+    await flushMicrotasks();
+    const cleanup = mountMarimoIsland.mock.results[0]!.value;
+
+    element.payload = replacementPayload;
+    await flushMicrotasks();
+
+    expect(element.payload).toBe(replacementPayload);
+    expect(mountMarimoIsland).toHaveBeenCalledOnce();
+    expect(cleanup).not.toHaveBeenCalled();
+
+    disconnectElement(element);
+    await flushTasks();
+    connectElement(element);
+    await flushMicrotasks();
+
+    expect(mountMarimoIsland).toHaveBeenCalledTimes(2);
+    expect(mountMarimoIsland.mock.calls[1]![1]).toBe(replacementPayload);
+    disconnectElement(element);
+    await flushTasks();
+  });
+
+  it("observes markup payloads when MutationObserver becomes available before connection", async () => {
+    vi.stubGlobal("MutationObserver", undefined);
+    const constructor = installPayloadElement("marimo-late-observer-test");
+    const observe = vi.fn();
+    let notifyMutation: ((mutations: TestMutation[]) => void) | undefined;
+
+    class TestMutationObserver {
+      constructor(callback: () => void) {
+        notifyMutation = (mutations) => {
+          if (mutations.length > 0) callback();
+        };
+      }
+
+      disconnect(): void {}
+
+      observe(target: Node, options?: MutationObserverInit): void {
+        observe(target, options);
+      }
+
+      takeRecords(): MutationRecord[] {
+        return [];
+      }
+    }
+
+    vi.stubGlobal("MutationObserver", TestMutationObserver);
+    vi.stubGlobal("HTMLTemplateElement", class TestHTMLTemplateElement {});
+    const page = compiledPage("marimo-late-observer-app");
+    const element = new constructor();
+    connectElement(element);
+    await flushMicrotasks();
+
+    expect(observe).toHaveBeenCalledOnce();
+    expect(observe.mock.calls[0]?.[0]).toBe(element);
+    expect(observe.mock.calls[0]?.[1]).toEqual({
+      attributeFilter: ["data-marimo-payload", "data-marimo-payload-encoding"],
+      attributes: true,
+      childList: true,
+      subtree: true,
+    });
+
+    setPayload(element, pageCellPayload(page, page.cells[0]!));
+    notifyMutation?.([
+      { attributeName: "data-marimo-payload", type: "attributes" },
+      { attributeName: "data-marimo-payload-encoding", type: "attributes" },
+    ]);
+    await flushMicrotasks();
+
+    expect(mountMarimoIsland).toHaveBeenCalledOnce();
+    disconnectElement(element);
+    await flushTasks();
+  });
+
   it("does not mount a queued payload after the element disconnects", async () => {
     const constructor = installPayloadElement("marimo-disconnected-test");
     const page = compiledPage("marimo-disconnected-app");
-    const element = new constructor() as PayloadElement;
+    const element = new constructor();
     setPayload(element, pageCellPayload(page, page.cells[0]!));
 
     connectElement(element);
     disconnectElement(element);
     await flushMicrotasks();
 
-    expect(vi.mocked(mountMarimoIsland)).not.toHaveBeenCalled();
+    expect(mountMarimoIsland).not.toHaveBeenCalled();
     await flushTasks();
   });
 
   it("rejects invalid programmatic payloads", () => {
     const constructor = installPayloadElement("marimo-invalid-property-test");
-    const element = new constructor() as PayloadElement;
+    const element = new constructor();
 
     expect(() => {
-      element.payload = { protocolVersion: 1 } as never;
-    }).toThrowError("Invalid marimo page cell payload");
+      Reflect.set(element, "payload", { protocolVersion: 1 });
+    }).toThrowError(new TypeError("Invalid marimo page cell payload"));
+  });
+
+  it("reports invalid markup payloads as type errors", async () => {
+    const constructor = installPayloadElement("marimo-invalid-markup-test");
+    const element = new constructor();
+    element.setAttribute("data-marimo-payload", JSON.stringify({ protocolVersion: 1 }));
+
+    connectElement(element);
+    await flushMicrotasks();
+
+    expect(mountMarimoIsland).not.toHaveBeenCalled();
+    expect(renderMarimoIslandError).toHaveBeenCalledOnce();
+    expect(renderMarimoIslandError.mock.calls[0]?.[1]).toEqual(
+      new TypeError("Invalid marimo page cell payload"),
+    );
+    disconnectElement(element);
+    await flushTasks();
+  });
+
+  it("reports mount failures through the configured element runtime", async () => {
+    const constructor = installPayloadElement("marimo-runtime-error-test");
+    const page = compiledPage("marimo-runtime-error-app");
+    const element = new constructor();
+    const failure = new Error("mount failed");
+    mountMarimoIsland.mockImplementationOnce(() => {
+      throw failure;
+    });
+    element.payload = pageCellPayload(page, page.cells[0]!);
+
+    connectElement(element);
+    await flushMicrotasks();
+
+    expect(renderMarimoIslandError).toHaveBeenCalledOnce();
+    expect(renderMarimoIslandError.mock.calls[0]?.[0]).toBe(element);
+    expect(renderMarimoIslandError.mock.calls[0]?.[1]).toBe(failure);
+    disconnectElement(element);
+    await flushTasks();
   });
 
   it("keeps a page app resolvable while a referenced cell remains", async () => {
     const constructor = installPayloadElement("marimo-registration-test");
     const page = compiledPage("marimo-registration-app");
-    const declaration = new constructor() as PayloadElement;
-    const referenced = new constructor() as PayloadElement;
+    const declaration = new constructor();
+    const referenced = new constructor();
     setPayload(declaration, pageCellPayload(page, page.cells[0]!));
     setPayload(referenced, pageCellReferencePayload(page, page.cells[1]!));
     connectElement(declaration);
@@ -188,9 +347,9 @@ describe("defineMarimoIslandElement", () => {
     disconnectElement(declaration);
     await flushTasks();
 
-    const mount = vi.mocked(mountMarimoIsland);
+    const mount = mountMarimoIsland;
     mount.mockClear();
-    const nextReference = new constructor() as PayloadElement;
+    const nextReference = new constructor();
     setPayload(nextReference, pageCellReferencePayload(page, page.cells[1]!));
     connectElement(nextReference);
     await flushMicrotasks();
@@ -209,21 +368,21 @@ describe("defineMarimoIslandElement", () => {
   it("releases a page app when its declaration fails to mount", async () => {
     const constructor = installPayloadElement("marimo-failed-declaration-test");
     const page = compiledPage("marimo-failed-declaration-app");
-    const declaration = new constructor() as PayloadElement;
+    const declaration = new constructor();
     setPayload(declaration, pageCellPayload(page, page.cells[0]!));
-    vi.mocked(mountMarimoIsland).mockImplementationOnce(() => {
+    mountMarimoIsland.mockImplementationOnce(() => {
       throw new Error("mount failed");
     });
 
     connectElement(declaration);
     await flushMicrotasks();
 
-    const referenced = new constructor() as PayloadElement;
+    const referenced = new constructor();
     setPayload(referenced, pageCellReferencePayload(page, page.cells[1]!));
     connectElement(referenced);
     await flushMicrotasks();
 
-    expect(vi.mocked(mountMarimoIsland).mock.calls.at(-1)?.[1]).toMatchObject({
+    expect(mountMarimoIsland.mock.calls.at(-1)?.[1]).toMatchObject({
       app: null,
       cell: { index: 1 },
     });
@@ -235,8 +394,8 @@ describe("defineMarimoIslandElement", () => {
   it("resolves a reconnected reference from the current app owner", async () => {
     const constructor = installPayloadElement("marimo-reconnected-reference-test");
     const page = compiledPage("marimo-reconnected-reference-app");
-    const declaration = new constructor() as PayloadElement;
-    const referenced = new constructor() as PayloadElement;
+    const declaration = new constructor();
+    const referenced = new constructor();
     setPayload(declaration, pageCellPayload(page, page.cells[0]!));
     setPayload(referenced, pageCellReferencePayload(page, page.cells[1]!));
 
@@ -247,13 +406,13 @@ describe("defineMarimoIslandElement", () => {
     disconnectElement(referenced);
     disconnectElement(declaration);
     await flushTasks();
-    vi.mocked(mountMarimoIsland).mockClear();
+    mountMarimoIsland.mockClear();
 
     connectElement(referenced);
     await flushMicrotasks();
 
-    expect(vi.mocked(mountMarimoIsland)).toHaveBeenCalledOnce();
-    expect(vi.mocked(mountMarimoIsland).mock.calls[0]![1]).toMatchObject({
+    expect(mountMarimoIsland).toHaveBeenCalledOnce();
+    expect(mountMarimoIsland.mock.calls[0]![1]).toMatchObject({
       app: null,
       cell: { index: 1 },
     });
@@ -265,12 +424,12 @@ describe("defineMarimoIslandElement", () => {
   it("retains a mounted island when its element moves within one task", async () => {
     const constructor = installPayloadElement("marimo-relocation-test");
     const page = compiledPage("marimo-relocation-app");
-    const element = new constructor() as PayloadElement;
+    const element = new constructor();
     element.payload = pageCellPayload(page, page.cells[0]!);
 
     connectElement(element);
     await flushMicrotasks();
-    const mount = vi.mocked(mountMarimoIsland);
+    const mount = mountMarimoIsland;
     const cleanup = mount.mock.results[0]!.value;
 
     disconnectElement(element);
@@ -290,12 +449,12 @@ describe("defineMarimoIslandElement", () => {
   it("mounts a replacement payload after reconnecting within one task", async () => {
     const constructor = installPayloadElement("marimo-relocation-replacement-test");
     const page = compiledPage("marimo-relocation-replacement-app");
-    const element = new constructor() as PayloadElement;
+    const element = new constructor();
     element.payload = pageCellPayload(page, page.cells[0]!);
 
     connectElement(element);
     await flushMicrotasks();
-    const mount = vi.mocked(mountMarimoIsland);
+    const mount = mountMarimoIsland;
     const firstCleanup = mount.mock.results[0]!.value;
 
     disconnectElement(element);
@@ -330,21 +489,17 @@ describe("mountMarimoIslandElement", () => {
     });
     vi.stubGlobal("cancelAnimationFrame", vi.fn());
 
-    const first = mountMarimoIslandElement(firstHost as unknown as HTMLElement, payload, {
+    const first = mountMarimoIslandElement(elementHost(firstHost), payload, {
       name: "marimo-retained-mount-test",
       releaseDelayFrames: 2,
       theme: "light",
     });
     first.release();
-    const second = mountMarimoIslandElement(
-      secondHost as unknown as HTMLElement,
-      structuredClone(payload),
-      {
-        name: "marimo-retained-mount-test",
-        releaseDelayFrames: 2,
-        theme: "dark",
-      },
-    );
+    const second = mountMarimoIslandElement(elementHost(secondHost), structuredClone(payload), {
+      name: "marimo-retained-mount-test",
+      releaseDelayFrames: 2,
+      theme: "dark",
+    });
 
     expect(second.element).toBe(first.element);
     expect(second.element.dataset.marimoThemeMode).toBe("dark");
@@ -360,12 +515,12 @@ describe("mountMarimoIslandElement", () => {
     const page = compiledPage("marimo-revised-mount-app");
 
     const first = mountMarimoIslandElement(
-      host as unknown as HTMLElement,
+      elementHost(host),
       pageCellPayload(page, page.cells[0]!),
       { name: "marimo-revised-mount-test" },
     );
     const second = mountMarimoIslandElement(
-      host as unknown as HTMLElement,
+      elementHost(host),
       pageCellPayload(page, page.cells[1]!),
       { name: "marimo-revised-mount-test" },
     );
@@ -388,7 +543,7 @@ describe("mountMarimoIslandElement", () => {
     vi.stubGlobal("cancelAnimationFrame", vi.fn());
 
     const first = mountMarimoIslandElement(
-      firstHost as unknown as HTMLElement,
+      elementHost(firstHost),
       pageCellPayload(page, page.cells[0]!),
       {
         name: "marimo-retained-revision-test",
@@ -397,20 +552,16 @@ describe("mountMarimoIslandElement", () => {
       },
     );
     await flushMicrotasks();
-    const cleanup = vi.mocked(mountMarimoIsland).mock.results.at(-1)?.value;
+    const cleanup = mountMarimoIsland.mock.results.at(-1)?.value;
     first.release();
     firstHost.remove(first.element);
     await flushTasks();
 
-    mountMarimoIslandElement(
-      secondHost as unknown as HTMLElement,
-      pageCellPayload(page, page.cells[1]!),
-      {
-        name: "marimo-retained-revision-test",
-        releaseDelayFrames: 2,
-        retentionKey: "stable-slot",
-      },
-    );
+    mountMarimoIslandElement(elementHost(secondHost), pageCellPayload(page, page.cells[1]!), {
+      name: "marimo-retained-revision-test",
+      releaseDelayFrames: 2,
+      retentionKey: "stable-slot",
+    });
 
     expect(cleanup).toHaveBeenCalledOnce();
     for (const frame of frames) frame(0);
@@ -425,14 +576,14 @@ describe("mountMarimoIslandElement", () => {
     const page = compiledPage("marimo-retained-swap-app");
     const firstPayload = pageCellPayload(page, page.cells[0]!);
     const secondPayload = pageCellPayload(page, page.cells[1]!);
-    const first = mountMarimoIslandElement(firstHost as unknown as HTMLElement, firstPayload, {
+    const first = mountMarimoIslandElement(elementHost(firstHost), firstPayload, {
       name: "marimo-retained-swap-test",
     });
-    const second = mountMarimoIslandElement(secondHost as unknown as HTMLElement, secondPayload, {
+    const second = mountMarimoIslandElement(elementHost(secondHost), secondPayload, {
       name: "marimo-retained-swap-test",
     });
 
-    const adopted = mountMarimoIslandElement(firstHost as unknown as HTMLElement, secondPayload, {
+    const adopted = mountMarimoIslandElement(elementHost(firstHost), secondPayload, {
       name: "marimo-retained-swap-test",
     });
 
@@ -451,17 +602,17 @@ describe("mountMarimoIslandElement", () => {
     const secondPage = compiledPage("second-app");
 
     const first = mountMarimoIslandElement(
-      firstHost as unknown as HTMLElement,
+      elementHost(firstHost),
       pageCellPayload(firstPage, firstPage.cells[0]!),
       { name: "marimo-rekeyed-mount-test" },
     );
     mountMarimoIslandElement(
-      firstHost as unknown as HTMLElement,
+      elementHost(firstHost),
       pageCellPayload(secondPage, secondPage.cells[0]!),
       { name: "marimo-rekeyed-mount-test" },
     );
     const remounted = mountMarimoIslandElement(
-      secondHost as unknown as HTMLElement,
+      elementHost(secondHost),
       pageCellPayload(firstPage, firstPage.cells[0]!),
       { name: "marimo-rekeyed-mount-test" },
     );
@@ -470,22 +621,58 @@ describe("mountMarimoIslandElement", () => {
   });
 });
 
+type TestMutation = {
+  attributeName: "data-marimo-payload" | "data-marimo-payload-encoding";
+  type: "attributes";
+};
+
 type PayloadElement = MarimoIslandElement & {
   connectedCallback: () => void;
   disconnectedCallback: () => void;
+  fixtureParent: () => TestParent | null;
+  setFixtureConnected: (connected: boolean) => void;
+  setFixtureDocument: (document: Document) => void;
+  setFixtureParent: (parent: TestParent | null) => void;
+};
+
+type PayloadElementConstructor = new () => PayloadElement;
+
+type ElementDocumentFixture = {
+  createElement: (tagName: string) => HTMLElement;
+};
+
+type ElementHostFixture = {
+  ownerDocument: Document;
+  append: (element: MarimoIslandElement) => void;
 };
 
 class TestPayloadElement {
   readonly attributes = new Map<string, string>();
   readonly classList = { add() {} };
   readonly dataset: Record<string, string> = {};
-  ownerDocument = payloadOwnerDocument;
-  isConnected = false;
+  #ownerDocument = payloadOwnerDocument;
+  #isConnected = false;
+  #parent: TestParent | null = null;
   innerHTML = "";
-  parentElement: TestParent | null = null;
+
+  get isConnected(): boolean {
+    return this.#isConnected;
+  }
+
+  get ownerDocument(): Document {
+    return this.#ownerDocument;
+  }
+
+  get parentElement(): HTMLElement | null {
+    return this.#parent ? elementHost(this.#parent) : null;
+  }
 
   getAttribute(name: string): string | null {
     return this.attributes.get(name) ?? null;
+  }
+
+  querySelector(): Element | null {
+    return null;
   }
 
   setAttribute(name: string, value: string): void {
@@ -493,51 +680,82 @@ class TestPayloadElement {
   }
 
   remove(): void {
-    this.parentElement?.remove(this as unknown as MarimoIslandElement);
+    this.#parent?.removeFixture(this);
+  }
+
+  fixtureParent(): TestParent | null {
+    return this.#parent;
+  }
+
+  setFixtureConnected(connected: boolean): void {
+    this.#isConnected = connected;
+  }
+
+  setFixtureDocument(document: Document): void {
+    this.#ownerDocument = document;
+  }
+
+  setFixtureParent(parent: TestParent | null): void {
+    this.#parent = parent;
   }
 }
 
 class TestDocument {
-  constructor(private readonly elementConstructor: CustomElementConstructor) {}
+  constructor(readonly elementConstructor?: PayloadElementConstructor) {}
 
-  createElement(): HTMLElement {
-    const element = new this.elementConstructor() as unknown as TestPayloadElement;
-    element.ownerDocument = this as unknown as Document;
-    return element as unknown as HTMLElement;
+  createElement(_tagName: string): HTMLElement {
+    if (!this.elementConstructor) throw new Error("No custom element constructor was installed");
+    const element = new this.elementConstructor();
+    element.setFixtureDocument(elementDocument(this));
+    return element;
   }
 }
 
 class TestParent {
   readonly children: MarimoIslandElement[] = [];
+  readonly ownerDocument: Document;
 
-  constructor(readonly ownerDocument: TestDocument) {}
+  constructor(document: TestDocument) {
+    this.ownerDocument = elementDocument(document);
+  }
 
   append(element: MarimoIslandElement): void {
-    (element.parentElement as unknown as TestParent | null)?.remove(element);
+    const fixture = payloadElementFixture(element);
+    fixture.fixtureParent()?.remove(element);
     this.children.push(element);
-    const payloadElement = element as unknown as TestPayloadElement;
-    payloadElement.parentElement = this;
-    payloadElement.isConnected = true;
-    (element as PayloadElement).connectedCallback?.();
+    fixture.setFixtureParent(this);
+    fixture.setFixtureConnected(true);
+    fixture.connectedCallback();
   }
 
   remove(element: MarimoIslandElement): void {
-    const index = this.children.indexOf(element);
-    if (index !== -1) this.children.splice(index, 1);
-    const payloadElement = element as unknown as TestPayloadElement;
-    payloadElement.parentElement = null;
-    payloadElement.isConnected = false;
-    (element as PayloadElement).disconnectedCallback?.();
+    this.#remove(element);
+  }
+
+  removeFixture(element: TestPayloadElement): void {
+    this.#remove(element);
+  }
+
+  #remove(element: MarimoIslandElement | TestPayloadElement): void {
+    const index = this.children.findIndex((child) => Object.is(child, element));
+    if (index === -1) return;
+    const mounted = this.children[index];
+    if (!mounted) return;
+    this.children.splice(index, 1);
+    const fixture = payloadElementFixture(mounted);
+    fixture.setFixtureParent(null);
+    fixture.setFixtureConnected(false);
+    fixture.disconnectedCallback();
   }
 }
 
-let payloadOwnerDocument = {} as Document;
+let payloadOwnerDocument: Document;
 
 function installPayloadElement(
   name: string,
   define = defineMarimoIslandElement,
-  ownerDocument = {} as Document,
-): CustomElementConstructor {
+  ownerDocument = elementDocument(new TestDocument()),
+): PayloadElementConstructor {
   payloadOwnerDocument = ownerDocument;
   const definitions = new Map<string, CustomElementConstructor>();
   Object.defineProperty(globalThis, "HTMLElement", {
@@ -556,7 +774,11 @@ function installPayloadElement(
     },
   });
 
-  return define({ name })!;
+  const constructor = define({ name });
+  if (!constructor) throw new Error("Expected a custom element constructor");
+  // SAFETY: The platform base supplies the fixture controls and the registered
+  // marimo constructor supplies the payload property and lifecycle callbacks.
+  return constructor as PayloadElementConstructor;
 }
 
 function setPayload(element: PayloadElement, payload: MarimoPageSerializedCellPayload): void {
@@ -565,13 +787,31 @@ function setPayload(element: PayloadElement, payload: MarimoPageSerializedCellPa
 }
 
 function connectElement(element: PayloadElement): void {
-  (element as unknown as TestPayloadElement).isConnected = true;
+  element.setFixtureConnected(true);
   element.connectedCallback();
 }
 
 function disconnectElement(element: PayloadElement): void {
-  (element as unknown as TestPayloadElement).isConnected = false;
+  element.setFixtureConnected(false);
   element.disconnectedCallback();
+}
+
+function elementDocument(document: ElementDocumentFixture): Document {
+  // SAFETY: Element tests use the document for createElement and symbol-keyed
+  // registries. The fixture implements createElement and remains extensible.
+  return document as Document;
+}
+
+function elementHost(host: ElementHostFixture): HTMLElement {
+  // SAFETY: mountMarimoIslandElement uses the host's ownerDocument, append
+  // method, and symbol-keyed retention state, all implemented by the fixture.
+  return host as HTMLElement;
+}
+
+function payloadElementFixture(element: MarimoIslandElement): PayloadElement {
+  // SAFETY: TestDocument creates elements with the constructor returned by
+  // installPayloadElement, which combines these fixture and marimo contracts.
+  return element as PayloadElement;
 }
 
 async function flushMicrotasks(): Promise<void> {

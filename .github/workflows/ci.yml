@@ -28,8 +28,11 @@ jobs:
           run-install: |
             - args: ['--frozen-lockfile']
 
+      - name: Enable Corepack
+        run: corepack enable
+
       - name: Check workspace
-        run: vp check && vp run -r typecheck
+        run: pnpm check
 
       - name: Test workspace
         run: vp run -r test

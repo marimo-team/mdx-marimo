@@ -5,6 +5,8 @@ import {
   getDefaultSerovalPlugins,
   X_TSS_SERIALIZED,
   type CustomFetch,
+  type ServerFnMiddlewareOptions,
+  type ServerFnMiddlewareResult,
 } from "@tanstack/react-start";
 import { toCrossJSONAsync } from "seroval";
 import { withBasePath } from "@/lib/base-path";
@@ -16,38 +18,36 @@ async function sha1Hash(message: string) {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function jsonToFilenameSafeString(value: unknown) {
-  const json = JSON.stringify(value ?? "", (_key, item: unknown) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) return item;
+interface StaticCacheEntry {
+  data: ServerFnMiddlewareOptions["data"];
+  functionId: string;
+  result: ServerFnMiddlewareResult["result"];
+  sendContext: ServerFnMiddlewareOptions["sendContext"];
+}
 
-    const record = item as Record<string, unknown>;
+function jsonToFilenameSafeString(value: ServerFnMiddlewareOptions["data"]) {
+  const json = JSON.stringify(value ?? "", (_key, item) => {
+    if (item === null || Object(item) !== item || Array.isArray(item) || item instanceof Function) {
+      return item;
+    }
+
     return Object.fromEntries(
-      Object.keys(record)
+      Object.keys(item)
         .sort()
-        .map((key) => [key, record[key]]),
+        .map((key) => [key, item[key]]),
     );
   });
 
   return json.replace(/[/\\?%*:|"<>]/g, "-").replace(/\s+/g, "_");
 }
 
-async function getStaticCachePath(functionId: string, data: unknown) {
+async function getStaticCachePath(functionId: string, data: ServerFnMiddlewareOptions["data"]) {
   const hash = jsonToFilenameSafeString(data);
   const filename = await sha1Hash(`${functionId}__${hash}`);
   return `/__tsr/staticServerFnCache/${filename}.json`;
 }
 
-async function writeCacheItem({
-  data,
-  functionId,
-  result,
-  sendContext,
-}: {
-  data: unknown;
-  functionId: string;
-  result: unknown;
-  sendContext: unknown;
-}) {
+async function writeCacheItem({ data, functionId, result, sendContext }: StaticCacheEntry) {
   const outputDir = process.env.TSS_CLIENT_OUTPUT_DIR;
   if (!outputDir) return;
 
@@ -62,7 +62,11 @@ async function writeCacheItem({
   await fs.writeFile(filePath, JSON.stringify(payload), "utf-8");
 }
 
-async function fetchCacheResponse(functionId: string, data: unknown, signal?: AbortSignal | null) {
+async function fetchCacheResponse(
+  functionId: string,
+  data: ServerFnMiddlewareOptions["data"],
+  signal?: AbortSignal | null,
+) {
   const cachePath = await getStaticCachePath(functionId, data);
   const response = await fetch(withBasePath(cachePath), { signal });
   if (!response.ok) throw new Error(`Static server function cache returned ${response.status}.`);
@@ -79,7 +83,7 @@ async function fetchCacheResponse(functionId: string, data: unknown, signal?: Ab
 
 export const staticFunctionMiddleware = createMiddleware({ type: "function" })
   .client(async (context) => {
-    if (process.env.NODE_ENV === "production" && typeof document !== "undefined") {
+    if (process.env.NODE_ENV === "production" && globalThis.document !== undefined) {
       // Keep static responses in TanStack's normal middleware pipeline so it
       // owns result deserialization and hydration context merging.
       const fetchFromStaticCache: CustomFetch = (_input, init) =>
@@ -94,13 +98,11 @@ export const staticFunctionMiddleware = createMiddleware({ type: "function" })
     const response = await context.next();
 
     if (process.env.NODE_ENV === "production") {
-      const runtimeResponse = response as typeof response & { result: unknown };
-      const runtimeContext = context as typeof context & { sendContext: unknown };
       await writeCacheItem({
         data: context.data,
         functionId: context.serverFnMeta.id,
-        result: runtimeResponse.result,
-        sendContext: runtimeContext.sendContext,
+        result: "result" in response ? response.result : undefined,
+        sendContext: "sendContext" in context ? context.sendContext : undefined,
       });
     }
 

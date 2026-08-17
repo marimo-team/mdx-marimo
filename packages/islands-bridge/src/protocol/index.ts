@@ -187,56 +187,86 @@ export function encodePageCellPayload(payload: MarimoPageSerializedCellPayload):
   return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
 }
 
-export function isMarimoPageCellPayload(value: unknown): value is MarimoPageCellPayload {
-  if (!isRecord(value) || value.protocolVersion !== MARIMO_PAGE_PROTOCOL_VERSION) return false;
-  if (!isPageCell(value.cell)) return false;
-  return value.app === null || isPageRuntime(value.app);
+export function parseMarimoPageSerializedCellPayload(
+  value: JsonValue,
+): MarimoPageSerializedCellPayload | undefined {
+  if (!isJsonRecord(value) || value.protocolVersion !== MARIMO_PAGE_PROTOCOL_VERSION) {
+    return undefined;
+  }
+  const ownsApp = Object.hasOwn(value, "app");
+  const ownsAppId = Object.hasOwn(value, "appId");
+  if (ownsApp === ownsAppId) return undefined;
+  const cell = parsePageCell(value.cell);
+  if (cell === undefined) return undefined;
+  if (ownsApp) {
+    const app = parsePageRuntime(value.app);
+    if (app === undefined) return undefined;
+    return {
+      protocolVersion: MARIMO_PAGE_PROTOCOL_VERSION,
+      app,
+      cell,
+    };
+  }
+  const appId = parseNonEmptyString(value.appId);
+  if (appId === undefined) return undefined;
+  return {
+    protocolVersion: MARIMO_PAGE_PROTOCOL_VERSION,
+    appId,
+    cell,
+  };
 }
 
-export function isMarimoPageCellReferencePayload(
-  value: unknown,
-): value is MarimoPageCellReferencePayload {
-  return (
-    isRecord(value) &&
-    value.protocolVersion === MARIMO_PAGE_PROTOCOL_VERSION &&
-    typeof value.appId === "string" &&
-    value.appId.length > 0 &&
-    isPageCell(value.cell)
-  );
+export function parseCompiledMarimoPage(value: JsonValue): CompiledMarimoPage | undefined {
+  if (!isJsonRecord(value) || value.protocolVersion !== MARIMO_PAGE_PROTOCOL_VERSION) {
+    return undefined;
+  }
+  const app = parsePageRuntime(value.app);
+  const cells = parseArray(value.cells, parseCompiledCell);
+  const diagnostics = parseArray(value.diagnostics, parseDiagnostic);
+  if (app === undefined || cells === undefined || diagnostics === undefined) return undefined;
+  return {
+    protocolVersion: MARIMO_PAGE_PROTOCOL_VERSION,
+    app,
+    cells,
+    diagnostics,
+  };
 }
 
-export function isCompiledMarimoPage(value: unknown): value is CompiledMarimoPage {
-  return (
-    isRecord(value) &&
-    value.protocolVersion === MARIMO_PAGE_PROTOCOL_VERSION &&
-    (value.app === null || isPageRuntime(value.app)) &&
-    isArrayOf(value.cells, isCompiledCell) &&
-    isArrayOf(value.diagnostics, isDiagnostic)
-  );
+function parseCompiledCell(value: JsonValue): CompiledMarimoCell | undefined {
+  if (!isJsonRecord(value)) return undefined;
+  const cell = parsePageCell(value);
+  const output = parseCompiledOutput(value.output);
+  if (cell === undefined || output === undefined) return undefined;
+  return {
+    ...cell,
+    output,
+  };
 }
 
-function isCompiledCell(value: unknown): value is CompiledMarimoCell {
-  return isPageCell(value) && "output" in value && isCompiledOutput(value.output);
+function parsePageCell(value: JsonValue | undefined): MarimoPageCell | undefined {
+  if (!isJsonRecord(value)) return undefined;
+  const index = parseFiniteNumber(value.index);
+  const html = parseString(value.html);
+  const options = parseCellOptions(value.options);
+  const diagnostics = parseOptionalArray(value.diagnostics, parseDiagnostic);
+  if (index === undefined || html === undefined || options === undefined || diagnostics === null) {
+    return undefined;
+  }
+  const cell: MarimoPageCell = { index, html, options };
+  if (diagnostics !== undefined) cell.diagnostics = diagnostics;
+  return cell;
 }
 
-function isPageCell(value: unknown): value is MarimoPageCell {
-  return (
-    isRecord(value) &&
-    isFiniteNumber(value.index) &&
-    typeof value.html === "string" &&
-    isCellOptions(value.options) &&
-    (value.diagnostics === undefined || isArrayOf(value.diagnostics, isDiagnostic))
-  );
-}
-
-function isCompiledOutput(value: unknown): value is CompiledMarimoOutput | null {
-  return (
-    value === null ||
-    (isRecord(value) &&
-      typeof value.mimetype === "string" &&
-      isJsonValue(value.data) &&
-      typeof value.html === "string")
-  );
+function parseCompiledOutput(
+  value: JsonValue | undefined,
+): CompiledMarimoOutput | null | undefined {
+  if (value === null) return null;
+  if (!isJsonRecord(value)) return undefined;
+  const mimetype = parseString(value.mimetype);
+  const data = value.data === undefined ? undefined : parseJsonValue(value.data);
+  const html = parseString(value.html);
+  if (mimetype === undefined || data === undefined || html === undefined) return undefined;
+  return { mimetype, data, html };
 }
 
 function pageCell(cell: CompiledMarimoCell): MarimoPageCell {
@@ -249,100 +279,260 @@ function pageCell(cell: CompiledMarimoCell): MarimoPageCell {
   return projected;
 }
 
-function isPageRuntime(value: unknown): value is MarimoPageRuntime {
+function parsePageRuntime(value: JsonValue | undefined): MarimoPageRuntime | null | undefined {
+  if (value === null) return null;
+  if (!isJsonRecord(value)) return undefined;
+  const id = parseNonEmptyString(value.id);
+  const runtimeCellCount = parseFiniteNumber(value.runtimeCellCount);
+  const assets = parseRuntimeAssets(value.assets);
+  const notebookCode = parseOptionalString(value.notebookCode);
+  if (
+    id === undefined ||
+    runtimeCellCount === undefined ||
+    assets === undefined ||
+    notebookCode === null
+  ) {
+    return undefined;
+  }
+  const runtime: MarimoPageRuntime = { id, runtimeCellCount, assets };
+  if (notebookCode !== undefined) runtime.notebookCode = notebookCode;
+  return runtime;
+}
+
+function parseRuntimeAssets(value: JsonValue | undefined): MarimoRuntimeAssets | undefined {
+  if (!isJsonRecord(value)) return undefined;
+  const moduleScripts = parseArray(value.moduleScripts, parseString);
+  const links = parseArray(value.links, parseStringRecord);
+  const headTags = parseOptionalArray(value.headTags, parseHeadTag);
+  const version = parseOptionalString(value.version);
+  if (moduleScripts === undefined || links === undefined || headTags === null || version === null) {
+    return undefined;
+  }
+  const assets: MarimoRuntimeAssets = { moduleScripts, links };
+  if (headTags !== undefined) assets.headTags = headTags;
+  if (version !== undefined) assets.version = version;
+  return assets;
+}
+
+function parseHeadTag(
+  value: JsonValue,
+): NonNullable<MarimoRuntimeAssets["headTags"]>[number] | undefined {
+  if (!isJsonRecord(value)) return undefined;
+  const tag = parseString(value.tag);
+  const attrs = parseStringRecord(value.attrs);
+  const text = parseOptionalString(value.text);
+  if (tag === undefined || attrs === undefined || text === null) return undefined;
+  const headTag: NonNullable<MarimoRuntimeAssets["headTags"]>[number] = { tag, attrs };
+  if (text !== undefined) headTag.text = text;
+  return headTag;
+}
+
+function parseCellOptions(value: JsonValue | undefined): MarimoCellOptions | undefined {
+  if (!isJsonRecord(value)) return undefined;
+  const language = parseLanguage(value.language);
+  const render = parseRenderOptions(value.render);
+  const execution = parseExecutionOptions(value.execution);
+  const marimo = parseMarimoOptions(value.marimo);
+  const sql = parseSqlOptions(value.sql);
+  const name = parseOptionalString(value.name);
+  const column = parseOptionalFiniteNumber(value.column);
+  if (
+    language === undefined ||
+    render === undefined ||
+    execution === undefined ||
+    marimo === undefined ||
+    sql === null ||
+    name === null ||
+    column === null
+  ) {
+    return undefined;
+  }
+  const options: MarimoCellOptions = { language, render, execution, marimo };
+  if (sql !== undefined) options.sql = sql;
+  if (name !== undefined) options.name = name;
+  if (column !== undefined) options.column = column;
+  return options;
+}
+
+function parseLanguage(value: JsonValue | undefined): MarimoLanguage | undefined {
+  return value === "python" || value === "sql" || value === "markdown" ? value : undefined;
+}
+
+function parseExecutionOptions(
+  value: JsonValue | undefined,
+): MarimoCellOptions["execution"] | undefined {
+  if (!isJsonRecord(value)) return undefined;
+  const enabled = parseBoolean(value.enabled);
+  return enabled === undefined ? undefined : { enabled };
+}
+
+function parseMarimoOptions(value: JsonValue | undefined): MarimoCellOptions["marimo"] | undefined {
+  if (!isJsonRecord(value)) return undefined;
+  const disabled = parseBoolean(value.disabled);
+  const unparsable = parseBoolean(value.unparsable);
+  return disabled === undefined || unparsable === undefined ? undefined : { disabled, unparsable };
+}
+
+function parseSqlOptions(value: JsonValue | undefined): MarimoCellOptions["sql"] | null {
+  if (value === undefined) return undefined;
+  if (!isJsonRecord(value)) return null;
+  const outputName = parseOptionalString(value.outputName);
+  const engine = parseOptionalString(value.engine);
+  if (outputName === null || engine === null) return null;
+  const sql: NonNullable<MarimoCellOptions["sql"]> = {};
+  if (outputName !== undefined) sql.outputName = outputName;
+  if (engine !== undefined) sql.engine = engine;
+  return sql;
+}
+
+function parseRenderOptions(value: JsonValue | undefined): MarimoRenderOptions | undefined {
+  if (!isJsonRecord(value)) return undefined;
+  const source = parseBoolean(value.source);
+  const output = parseBoolean(value.output);
+  const include = parseBoolean(value.include);
+  const editor = parseBoolean(value.editor);
+  const error = parseBoolean(value.error);
+  const serverOutput = parseBoolean(value.serverOutput);
+  if (
+    source === undefined ||
+    output === undefined ||
+    include === undefined ||
+    editor === undefined ||
+    error === undefined ||
+    serverOutput === undefined
+  ) {
+    return undefined;
+  }
+  return { source, output, include, editor, error, serverOutput };
+}
+
+function parseDiagnostic(value: JsonValue): MarimoDiagnostic | undefined {
+  if (!isJsonRecord(value)) return undefined;
+  const severity = value.severity;
+  const message = parseString(value.message);
+  const cellIndex = parseOptionalFiniteNumber(value.cellIndex);
+  const line = parseOptionalFiniteNumber(value.line);
+  if (
+    (severity !== "warning" && severity !== "error") ||
+    message === undefined ||
+    cellIndex === null ||
+    line === null
+  ) {
+    return undefined;
+  }
+  const diagnostic: MarimoDiagnostic = { severity, message };
+  if (cellIndex !== undefined) diagnostic.cellIndex = cellIndex;
+  if (line !== undefined) diagnostic.line = line;
+  return diagnostic;
+}
+
+function parseJsonValue(value: JsonValue): JsonValue | undefined {
+  if (value === null || isString(value) || isBoolean(value)) return value;
+  if (isFiniteNumber(value)) return value;
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      if (parseJsonValue(entry) === undefined) return undefined;
+    }
+    return value;
+  }
+  if (!isJsonRecord(value)) return undefined;
+  for (const entry of Object.values(value)) {
+    if (parseJsonValue(entry) === undefined) return undefined;
+  }
+  return value;
+}
+
+function parseStringRecord(value: JsonValue | undefined): Record<string, string> | undefined {
+  if (!isJsonRecord(value)) return undefined;
+  const record: Record<string, string> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    const parsed = parseString(entry);
+    if (parsed === undefined) return undefined;
+    Object.defineProperty(record, key, {
+      configurable: true,
+      enumerable: true,
+      value: parsed,
+      writable: true,
+    });
+  }
+  return record;
+}
+
+function parseArray<T>(
+  value: JsonValue | undefined,
+  parser: (entry: JsonValue) => T | undefined,
+): T[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const parsed: T[] = [];
+  for (const entry of value) {
+    const item = parser(entry);
+    if (item === undefined) return undefined;
+    parsed.push(item);
+  }
+  return parsed;
+}
+
+function parseOptionalArray<T>(
+  value: JsonValue | undefined,
+  parser: (entry: JsonValue) => T | undefined,
+): T[] | undefined | null {
+  return value === undefined ? undefined : (parseArray(value, parser) ?? null);
+}
+
+function parseString(value: JsonValue | undefined): string | undefined {
+  return isString(value) ? value : undefined;
+}
+
+function parseNonEmptyString(value: JsonValue | undefined): string | undefined {
+  const parsed = parseString(value);
+  return parsed && parsed.length > 0 ? parsed : undefined;
+}
+
+function parseOptionalString(value: JsonValue | undefined): string | undefined | null {
+  return value === undefined ? undefined : (parseString(value) ?? null);
+}
+
+function parseBoolean(value: JsonValue | undefined): boolean | undefined {
+  return isBoolean(value) ? value : undefined;
+}
+
+function parseFiniteNumber(value: JsonValue | undefined): number | undefined {
+  return isFiniteNumber(value) ? value : undefined;
+}
+
+function parseOptionalFiniteNumber(value: JsonValue | undefined): number | undefined | null {
+  return value === undefined ? undefined : (parseFiniteNumber(value) ?? null);
+}
+
+function isString(value: JsonValue | undefined): value is string {
   return (
-    isRecord(value) &&
-    typeof value.id === "string" &&
-    value.id.length > 0 &&
-    isFiniteNumber(value.runtimeCellCount) &&
-    isRuntimeAssets(value.assets) &&
-    (value.notebookCode === undefined || typeof value.notebookCode === "string")
+    value !== undefined &&
+    value !== null &&
+    Object.getPrototypeOf(value) === String.prototype &&
+    Object(value) !== value
   );
 }
 
-function isRuntimeAssets(value: unknown): value is MarimoRuntimeAssets {
-  return (
-    isRecord(value) &&
-    isArrayOf(value.moduleScripts, isString) &&
-    isArrayOf(value.links, isStringRecord) &&
-    (value.headTags === undefined || isArrayOf(value.headTags, isHeadTag)) &&
-    (value.version === undefined || typeof value.version === "string")
-  );
+function isBoolean(value: JsonValue | undefined): value is boolean {
+  return value === true || value === false;
 }
 
-function isHeadTag(value: unknown): value is NonNullable<MarimoRuntimeAssets["headTags"]>[number] {
-  return (
-    isRecord(value) &&
-    typeof value.tag === "string" &&
-    isStringRecord(value.attrs) &&
-    (value.text === undefined || typeof value.text === "string")
-  );
+function isFiniteNumber(value: JsonValue | undefined): value is number {
+  return value !== undefined && Number.isFinite(value);
 }
 
-function isCellOptions(value: unknown): value is MarimoCellOptions {
-  return (
-    isRecord(value) &&
-    (value.language === "python" || value.language === "sql" || value.language === "markdown") &&
-    isRenderOptions(value.render) &&
-    isRecord(value.execution) &&
-    typeof value.execution.enabled === "boolean" &&
-    isRecord(value.marimo) &&
-    typeof value.marimo.disabled === "boolean" &&
-    typeof value.marimo.unparsable === "boolean" &&
-    (value.sql === undefined ||
-      (isRecord(value.sql) &&
-        (value.sql.outputName === undefined || typeof value.sql.outputName === "string") &&
-        (value.sql.engine === undefined || typeof value.sql.engine === "string"))) &&
-    (value.name === undefined || typeof value.name === "string") &&
-    (value.column === undefined || isFiniteNumber(value.column))
-  );
-}
-
-function isRenderOptions(value: unknown): value is MarimoRenderOptions {
-  return (
-    isRecord(value) &&
-    typeof value.source === "boolean" &&
-    typeof value.output === "boolean" &&
-    typeof value.include === "boolean" &&
-    typeof value.editor === "boolean" &&
-    typeof value.error === "boolean" &&
-    typeof value.serverOutput === "boolean"
-  );
-}
-
-function isDiagnostic(value: unknown): value is MarimoDiagnostic {
-  return (
-    isRecord(value) &&
-    (value.severity === "warning" || value.severity === "error") &&
-    typeof value.message === "string" &&
-    (value.cellIndex === undefined || isFiniteNumber(value.cellIndex)) &&
-    (value.line === undefined || isFiniteNumber(value.line))
-  );
-}
-
-function isJsonValue(value: unknown): value is JsonValue {
-  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
-  if (isFiniteNumber(value)) return true;
-  if (Array.isArray(value)) return Array.from(value).every(isJsonValue);
-  return isRecord(value) && Object.values(value).every(isJsonValue);
-}
-
-function isStringRecord(value: unknown): value is Record<string, string> {
-  return isRecord(value) && Object.values(value).every(isString);
-}
-
-function isArrayOf<T>(value: unknown, guard: (entry: unknown) => entry is T): value is T[] {
-  return Array.isArray(value) && Array.from(value).every(guard);
-}
-
-function isString(value: unknown): value is string {
-  return typeof value === "string";
-}
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+function isJsonRecord(value: JsonValue | undefined): value is JsonRecord {
+  if (value === undefined || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype === Object.prototype || prototype === null) return true;
+  if (Object.getPrototypeOf(prototype) !== null) return false;
+  const constructor = Object.getOwnPropertyDescriptor(prototype, "constructor")?.value;
+  if (!constructor || constructor.prototype !== prototype) return false;
+  try {
+    return (
+      Function.prototype.toString.call(constructor) === Function.prototype.toString.call(Object)
+    );
+  } catch {
+    return false;
+  }
 }

@@ -1,7 +1,10 @@
 import { SHADOW_THEME_CSS, SHADOW_THEME_STYLE_ID } from "../styling/shadow-theme";
 import type { ResolvedMarimoTheme } from "./theme-mode";
 
-type ShadowHost = Element & { shadowRoot: ShadowRoot };
+type ShadowHost = {
+  element: Element;
+  root: ShadowRoot;
+};
 
 export function installMarimoShadowThemeBridge(
   host: HTMLElement,
@@ -14,7 +17,7 @@ export function installMarimoShadowThemeBridge(
     const theme = resolveTheme();
     applyMarimoShadowTheme(host, theme);
 
-    const roots = new Set(shadowHostsIn(host, ownerDocument).map((element) => element.shadowRoot));
+    const roots = new Set(shadowHostsIn(host, ownerDocument).map((shadowHost) => shadowHost.root));
     for (const [root, observer] of observers) {
       if (roots.has(root)) continue;
       observer.disconnect();
@@ -46,15 +49,15 @@ export function installMarimoShadowThemeBridge(
 
 export function applyMarimoShadowTheme(host: HTMLElement, theme: ResolvedMarimoTheme): void {
   const ownerDocument = host.ownerDocument ?? document;
-  for (const element of shadowHostsIn(host, ownerDocument)) {
+  for (const { element, root } of shadowHostsIn(host, ownerDocument)) {
     if (element.getAttribute("data-marimo-theme") !== theme) {
       element.setAttribute("data-marimo-theme", theme);
     }
     if (element instanceof HTMLElement) {
       element.style.colorScheme = theme;
     }
-    ensureShadowThemeStyle(element.shadowRoot);
-    applyShadowTheme(element.shadowRoot, theme);
+    ensureShadowThemeStyle(root);
+    applyShadowTheme(root, theme);
   }
 }
 
@@ -64,15 +67,18 @@ function shadowHostsIn(root: ParentNode, document: Document): ShadowHost[] {
   let node = walker.nextNode();
 
   while (node) {
-    const element = node as Element;
-    if (element.shadowRoot) {
-      hosts.push(element as ShadowHost);
-      hosts.push(...shadowHostsIn(element.shadowRoot, document));
+    if (isElement(node) && node.shadowRoot) {
+      hosts.push({ element: node, root: node.shadowRoot });
+      hosts.push(...shadowHostsIn(node.shadowRoot, document));
     }
     node = walker.nextNode();
   }
 
   return hosts;
+}
+
+function isElement(node: Node): node is Element {
+  return node.nodeType === 1;
 }
 
 function ensureShadowThemeStyle(root: ShadowRoot): void {

@@ -2,10 +2,7 @@ import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
-import {
-  MARIMO_PAGE_PROTOCOL_VERSION,
-  type MarimoPageRequest,
-} from "@marimo-team/mdx-marimo/bridge/protocol";
+import { MARIMO_PAGE_PROTOCOL_VERSION, type MarimoPageRequest } from "../src/bridge/protocol";
 import { compileMarimoPage } from "../src/node";
 
 const tempDirs: string[] = [];

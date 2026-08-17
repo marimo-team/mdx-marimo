@@ -1,10 +1,21 @@
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   applyMarimoShadowTheme,
   installMarimoShadowThemeBridge,
 } from "../src/browser/shadow-roots";
 import { installMarimoThemeBridge, refreshMarimoThemeBridge } from "../src/browser/theme";
 import { resolveTheme } from "../src/browser/theme-mode";
+
+beforeEach(() => {
+  rootsByParent = new Map();
+  shadowRootOwnerDocument = undefined;
+  shadowHostRoot = undefined;
+  themeElementOptions = {};
+  vi.stubGlobal("Document", DocumentFixture);
+  vi.stubGlobal("Element", ShadowHostFixture);
+  vi.stubGlobal("HTMLElement", ThemeHTMLElementFixture);
+  vi.stubGlobal("ShadowRoot", ShadowRootFixture);
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -38,7 +49,7 @@ describe("automatic island theme", () => {
 
   it("leaves inherited color-scheme under host control", () => {
     const style = { colorScheme: "inherit" };
-    const host = { ...themeElement(), style } as unknown as HTMLElement;
+    const host = themeElement({ style });
     vi.stubGlobal("NodeFilter", { SHOW_ELEMENT: 1 });
     vi.stubGlobal("document", {
       createTreeWalker: () => ({ nextNode: () => null }),
@@ -55,7 +66,7 @@ describe("automatic island theme", () => {
 
     expect(host.dataset.marimoTheme).toBe("light");
     host.setAttribute("data-marimo-theme-mode", "dark");
-    for (const callback of callbacks) callback([], {} as MutationObserver);
+    for (const callback of callbacks) callback();
 
     expect(host.dataset.marimoTheme).toBe("dark");
     cleanup();
@@ -66,7 +77,7 @@ describe("automatic island theme", () => {
     const cleanup = installMarimoThemeBridge(host, { theme: "light" });
 
     host.setAttribute("data-marimo-theme-mode", "dark");
-    for (const callback of callbacks) callback([], {} as MutationObserver);
+    for (const callback of callbacks) callback();
 
     expect(host.dataset.marimoTheme).toBe("light");
     cleanup();
@@ -84,7 +95,7 @@ describe("automatic island theme", () => {
     refreshMarimoThemeBridge(host);
 
     expect(host.dataset.marimoTheme).toBe("dark");
-    expect(observed).toContain(darkParent);
+    expect(observed.includes(darkParent)).toBe(true);
     cleanup();
   });
 
@@ -108,33 +119,22 @@ describe("automatic island theme", () => {
   it("stops observing shadow roots removed from the island", () => {
     const observers: TestObserver[] = [];
     const rootsByParent = new Map<ParentNode, Element[]>();
-    const ownerDocument = {
-      createElement: () => ({ id: "", textContent: "" }),
-      createTreeWalker: (root: ParentNode) => {
-        const elements = rootsByParent.get(root) ?? [];
-        let index = 0;
-        return { nextNode: () => elements[index++] ?? null };
-      },
-    } as unknown as Document;
+    const ownerDocument = shadowDocument(rootsByParent);
     const firstRoot = testShadowRoot(ownerDocument);
     const secondRoot = testShadowRoot(ownerDocument);
     const firstHost = testShadowHost(firstRoot);
     const secondHost = testShadowHost(secondRoot);
-    const host = {
-      ...themeElement(),
-      ownerDocument,
-    } as unknown as HTMLElement;
+    const host = themeElement({ ownerDocument });
     rootsByParent.set(host, [firstHost]);
     rootsByParent.set(firstRoot, []);
     rootsByParent.set(secondRoot, []);
 
-    vi.stubGlobal("HTMLElement", class {});
     vi.stubGlobal(
       "MutationObserver",
       class {
         readonly observer: TestObserver;
 
-        constructor(callback: MutationCallback) {
+        constructor(callback: () => void) {
           this.observer = new TestObserver(callback);
           observers.push(this.observer);
         }
@@ -156,7 +156,7 @@ describe("automatic island theme", () => {
 
     const cleanup = installMarimoShadowThemeBridge(host, () => "light");
     rootsByParent.set(host, [secondHost]);
-    observers.find((observer) => observer.target === host)?.callback([], {} as MutationObserver);
+    observers.find((observer) => observer.target === host)?.callback();
 
     expect(observers.find((observer) => observer.target === firstRoot)?.disconnected).toBe(true);
     expect(observers.find((observer) => observer.target === secondRoot)?.disconnected).toBe(false);
@@ -168,62 +168,124 @@ class TestObserver {
   disconnected = false;
   target: Node | undefined;
 
-  constructor(readonly callback: MutationCallback) {}
+  constructor(readonly callback: () => void) {}
+}
+
+type ThemeElementOptions = {
+  attributes?: Iterable<readonly [string, string]>;
+  classes?: string[];
+  ownerDocument?: Document;
+  parent?: HTMLElement | null;
+  style?: { colorScheme: string };
+};
+
+class ThemeElementFixture {
+  readonly classList: { contains: (value: string) => boolean };
+  readonly dataset: Record<string, string> = {};
+  readonly ownerDocument: Document | undefined;
+  parentElement: HTMLElement | null;
+  readonly style: { colorScheme: string } | undefined;
+
+  readonly #attributes: Map<string, string>;
+
+  constructor(options: ThemeElementOptions) {
+    const classes = options.classes ?? [];
+    this.#attributes = new Map(options.attributes);
+    this.classList = { contains: (value: string) => classes.includes(value) };
+    this.ownerDocument = options.ownerDocument;
+    this.parentElement = options.parent ?? null;
+    this.style = options.style;
+  }
+
+  getAttribute(name: string): string | null {
+    return this.#attributes.get(name) ?? null;
+  }
+
+  setAttribute(name: string, value: string): void {
+    this.#attributes.set(name, value);
+  }
+}
+
+let rootsByParent = new Map<ParentNode, Element[]>();
+let shadowRootOwnerDocument: Document | undefined;
+let shadowHostRoot: ShadowRoot | undefined;
+let themeElementOptions: ThemeElementOptions = {};
+
+class DocumentFixture {
+  createElement() {
+    return { id: "", textContent: "" };
+  }
+
+  createTreeWalker(root: ParentNode) {
+    const elements = rootsByParent.get(root) ?? [];
+    let index = 0;
+    return { nextNode: () => elements[index++] ?? null };
+  }
+}
+
+class ShadowRootFixture {
+  readonly ownerDocument = shadowRootOwnerDocument;
+
+  append() {}
+  querySelector() {
+    return null;
+  }
+  querySelectorAll() {
+    return [];
+  }
+}
+
+class ShadowHostFixture {
+  readonly #attributes = new Map<string, string>();
+
+  readonly classList = { add: () => {}, remove: () => {} };
+  readonly nodeType = 1;
+  readonly shadowRoot = shadowHostRoot;
+
+  getAttribute(name: string): string | null {
+    return this.#attributes.get(name) ?? null;
+  }
+
+  setAttribute(name: string, value: string): void {
+    this.#attributes.set(name, value);
+  }
+}
+
+class ThemeHTMLElementFixture extends ThemeElementFixture {
+  constructor() {
+    super(themeElementOptions);
+  }
+}
+
+function shadowDocument(documentRoots: Map<ParentNode, Element[]>): Document {
+  rootsByParent = documentRoots;
+  return new Document();
 }
 
 function testShadowRoot(ownerDocument: Document): ShadowRoot {
-  return {
-    append: () => {},
-    ownerDocument,
-    querySelector: () => null,
-    querySelectorAll: () => [],
-  } as unknown as ShadowRoot;
+  shadowRootOwnerDocument = ownerDocument;
+  return new ShadowRoot();
 }
 
 function testShadowHost(root: ShadowRoot): Element {
-  const attributes = new Map<string, string>();
-  return {
-    classList: { add: () => {}, remove: () => {} },
-    getAttribute: (name: string) => attributes.get(name) ?? null,
-    setAttribute: (name: string, value: string) => attributes.set(name, value),
-    shadowRoot: root,
-  } as unknown as Element;
+  shadowHostRoot = root;
+  return new Element();
 }
 
-function themeElement({
-  classes = [],
-  parent = null,
-}: {
-  classes?: string[];
-  parent?: HTMLElement | null;
-} = {}): HTMLElement {
-  return {
-    classList: { contains: (value: string) => classes.includes(value) },
-    getAttribute: () => null,
-    parentElement: parent,
-  } as unknown as HTMLElement;
+function themeElement(options: ThemeElementOptions = {}): HTMLElement {
+  themeElementOptions = options;
+  return new HTMLElement();
 }
 
-function installThemeBrowser(mode: "auto" | "light" | "dark"): {
-  callbacks: MutationCallback[];
-  host: HTMLElement;
-  observed: Node[];
-} {
-  const callbacks: MutationCallback[] = [];
+function installThemeBrowser(mode: "auto" | "light" | "dark") {
+  const callbacks: Array<() => void> = [];
   const observed: Node[] = [];
-  const attributes = new Map<string, string>([["data-marimo-theme-mode", mode]]);
-  const host = {
-    classList: { contains: () => false },
-    dataset: {} as Record<string, string>,
-    getAttribute: (name: string) => attributes.get(name) ?? null,
-    setAttribute: (name: string, value: string) => attributes.set(name, value),
-    parentElement: null,
-  } as unknown as HTMLElement;
+  const host = themeElement({ attributes: [["data-marimo-theme-mode", mode]] });
 
   vi.stubGlobal(
     "MutationObserver",
     class {
-      constructor(callback: MutationCallback) {
+      constructor(callback: () => void) {
         callbacks.push(callback);
       }
 
@@ -238,6 +300,7 @@ function installThemeBrowser(mode: "auto" | "light" | "dark"): {
     body: host,
     createTreeWalker: () => ({ nextNode: () => null }),
   });
+  vi.stubGlobal("getComputedStyle", () => ({ colorScheme: "normal" }));
   vi.stubGlobal("window", {
     clearTimeout: vi.fn(),
     matchMedia: () => ({
