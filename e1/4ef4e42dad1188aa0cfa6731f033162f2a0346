@@ -1,0 +1,40 @@
+packages/islands-bridge/src/browser/island.ts
+  s_45e6fac1651d3a::t_c3ae65419c2037 8
+packages/islands-bridge/test/assets.test.ts
+  s_45e6fac1651d3a::t_c3ae65419c2037 795
+packages/islands-bridge/src/browser/theme.ts
+  s_45e6fac1651d3a::t_c3ae65419c2037 12-16,21
+package.json
+  s_45e6fac1651d3a::t_48c3ad88ebf249 19-20
+  s_45e6fac1651d3a::t_c3ae65419c2037 10,14
+  s_45e6fac1651d3a::t_c5bae369e96985 11
+tools/oxlint/anti-slop/rules/no-widen-then-assert.ts
+  s_f1b4ea5a74854f::t_8486c499e32a6e 5,49,93-94,97,107,203-204,213,220-221,237,264
+vite.config.ts
+  s_45e6fac1651d3a::t_48c3ad88ebf249 8,26,41-42,46
+  s_45e6fac1651d3a::t_71f37fd336a26f 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "e14ef4e42dad1188aa0cfa6731f033162f2a0346",
+  "prompts": {},
+  "sessions": {
+    "s_45e6fac1651d3a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a00a1a-d2bc-70f1-a84a-ab21c0e21e43",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    },
+    "s_f1b4ea5a74854f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a009a0-def0-7ed0-99c1-4390dd077dbd",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Péter Ferenc Gyarmati <dev.petergy@gmail.com>"
+    }
+  }
+}
