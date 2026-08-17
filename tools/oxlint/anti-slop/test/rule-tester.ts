@@ -1,18 +1,11 @@
-import type { Rule } from "@oxlint/plugins";
+import { describe, test } from "node:test";
 import { RuleTester } from "oxlint/plugins-dev";
-import { describe, it } from "vite-plus/test";
 
 RuleTester.describe = describe;
-RuleTester.it = it;
+RuleTester.it = test;
 
-const ruleTester = new RuleTester({
+export const ruleTester = new RuleTester({
   languageOptions: {
     parserOptions: { lang: "ts" },
-    sourceType: "module",
   },
 });
-
-/** Register focused TypeScript accept and reject cases for an anti-slop rule. */
-export function testRule(name: string, rule: Rule, cases: RuleTester.TestCases): void {
-  ruleTester.run(name, rule, cases);
-}

@@ -1,14 +1,21 @@
+import type { ESTree, Variable } from "@oxlint/plugins";
+
 import { defineRule } from "@oxlint/plugins";
-import type { ESTree, SourceCode, Variable } from "@oxlint/plugins";
 
-import { createTypeEnvironment, type TypeEnvironment } from "../shared/dictionary-types.ts";
-import { isGlobalTypeReference, resolveValueVariable } from "../shared/scope.ts";
+import {
+  createLexicalTypeEnvironment,
+  resolveTypeReference,
+  type LexicalTypeEnvironment,
+  type TypeSubstitutions,
+} from "../shared/type-environment.ts";
 
-type BroadTypeKind = "top" | "object" | "record";
+type BroadTypeKind = "open-record" | "top" | "object" | "record";
 
 type KnownValueEvidence = {
   readonly type: ESTree.TSType | null;
 };
+
+const EMPTY_SUBSTITUTIONS: TypeSubstitutions = new Map();
 
 const functionBoundaryTypes = new Set([
   "ArrowFunctionExpression",
@@ -30,12 +37,35 @@ function unwrapTypeParentheses(type: ESTree.TSType): ESTree.TSType {
   return current;
 }
 
-function isUnknownOrAnyType(type: ESTree.TSType): boolean {
-  const unwrapped = unwrapTypeParentheses(type);
-  return unwrapped.type === "TSUnknownKeyword" || unwrapped.type === "TSAnyKeyword";
+function typeReferenceName(type: ESTree.TSTypeReference): string | null {
+  return type.typeName.type === "Identifier" ? type.typeName.name : null;
 }
 
-function isBroadRecordKeyType(type: ESTree.TSType, environment: TypeEnvironment): boolean {
+function isUnknownOrAnyType(
+  type: ESTree.TSType,
+  environment: LexicalTypeEnvironment,
+  substitutions: TypeSubstitutions = EMPTY_SUBSTITUTIONS,
+  resolving: ReadonlySet<object> = new Set(),
+): boolean {
+  const unwrapped = unwrapTypeParentheses(type);
+  if (unwrapped.type === "TSUnknownKeyword" || unwrapped.type === "TSAnyKeyword") {
+    return true;
+  }
+  if (unwrapped.type === "TSUnionType") {
+    return unwrapped.types.some((member) =>
+      isUnknownOrAnyType(member, environment, substitutions, resolving),
+    );
+  }
+  if (unwrapped.type !== "TSTypeReference") return false;
+
+  const resolved = resolveTypeReference(unwrapped, environment, substitutions);
+  if (resolved === null || resolving.has(resolved.identity)) return false;
+  const nextResolving = new Set(resolving);
+  nextResolving.add(resolved.identity);
+  return isUnknownOrAnyType(resolved.type, environment, resolved.substitutions, nextResolving);
+}
+
+function isBroadRecordKeyType(type: ESTree.TSType, environment: LexicalTypeEnvironment): boolean {
   const unwrapped = unwrapTypeParentheses(type);
   if (
     unwrapped.type === "TSStringKeyword" ||
@@ -56,27 +86,33 @@ function isBroadRecordKeyType(type: ESTree.TSType, environment: TypeEnvironment)
   }
   return (
     unwrapped.type === "TSTypeReference" &&
-    isGlobalTypeReference(environment.sourceCode, unwrapped, "PropertyKey")
+    environment.isBuiltInTypeReference(unwrapped, "PropertyKey")
   );
 }
 
-function isBroadRecordType(type: ESTree.TSType, environment: TypeEnvironment): boolean {
+function isBroadRecordType(
+  type: ESTree.TSType,
+  environment: LexicalTypeEnvironment,
+  requireUnknownValue: boolean,
+): boolean {
   const unwrapped = unwrapTypeParentheses(type);
 
   if (unwrapped.type === "TSTypeReference") {
-    if (isGlobalTypeReference(environment.sourceCode, unwrapped, "Readonly")) {
+    if (environment.isBuiltInTypeReference(unwrapped, "Readonly")) {
       const [inner] = unwrapped.typeArguments?.params ?? [];
-      return inner !== undefined && isBroadRecordType(inner, environment);
+      return inner !== undefined && isBroadRecordType(inner, environment, requireUnknownValue);
     }
 
-    if (!isGlobalTypeReference(environment.sourceCode, unwrapped, "Record")) return false;
+    if (!environment.isBuiltInTypeReference(unwrapped, "Record")) {
+      return false;
+    }
     const parameters = unwrapped.typeArguments?.params ?? [];
     return (
       parameters.length === 2 &&
       parameters[0] !== undefined &&
       parameters[1] !== undefined &&
       isBroadRecordKeyType(parameters[0], environment) &&
-      isUnknownOrAnyType(parameters[1])
+      (!requireUnknownValue || isUnknownOrAnyType(parameters[1], environment))
     );
   }
 
@@ -88,15 +124,19 @@ function isBroadRecordType(type: ESTree.TSType, environment: TypeEnvironment): b
     member.parameters.length === 1 &&
     parameter !== undefined &&
     isBroadRecordKeyType(parameter.typeAnnotation.typeAnnotation, environment) &&
-    isUnknownOrAnyType(member.typeAnnotation.typeAnnotation)
+    (!requireUnknownValue || isUnknownOrAnyType(member.typeAnnotation.typeAnnotation, environment))
   );
 }
 
-function broadTypeKind(type: ESTree.TSType, environment: TypeEnvironment): BroadTypeKind | null {
+function broadTypeKind(
+  type: ESTree.TSType,
+  environment: LexicalTypeEnvironment,
+): BroadTypeKind | null {
   const unwrapped = unwrapTypeParentheses(type);
   if (unwrapped.type === "TSUnknownKeyword" || unwrapped.type === "TSAnyKeyword") return "top";
   if (unwrapped.type === "TSObjectKeyword") return "object";
-  return isBroadRecordType(unwrapped, environment) ? "record" : null;
+  if (isBroadRecordType(unwrapped, environment, true)) return "record";
+  return isBroadRecordType(unwrapped, environment, false) ? "open-record" : null;
 }
 
 function assertedExpression(
@@ -153,23 +193,81 @@ function isDefinitelyObjectType(type: ESTree.TSType): boolean {
 
 function isDefinitelyNarrowerRecordType(
   type: ESTree.TSType,
-  environment: TypeEnvironment,
+  environment: LexicalTypeEnvironment,
+  requireNamedMember: boolean,
+  substitutions: TypeSubstitutions = EMPTY_SUBSTITUTIONS,
+  resolving: ReadonlySet<object> = new Set(),
 ): boolean {
   const unwrapped = unwrapTypeParentheses(type);
   if (unwrapped.type === "TSTypeLiteral") {
-    return unwrapped.members.some((member) => member.type !== "TSIndexSignature");
+    return unwrapped.members.some(
+      (member) =>
+        member.type !== "TSIndexSignature" ||
+        (!requireNamedMember &&
+          !isUnknownOrAnyType(
+            member.typeAnnotation.typeAnnotation,
+            environment,
+            substitutions,
+            resolving,
+          )),
+    );
   }
 
   if (unwrapped.type !== "TSTypeReference") return false;
-  if (isGlobalTypeReference(environment.sourceCode, unwrapped, "Readonly")) {
+  if (environment.isBuiltInTypeReference(unwrapped, "Readonly")) {
     const [inner] = unwrapped.typeArguments?.params ?? [];
-    return inner !== undefined && isDefinitelyNarrowerRecordType(inner, environment);
+    return (
+      inner !== undefined &&
+      isDefinitelyNarrowerRecordType(
+        inner,
+        environment,
+        requireNamedMember,
+        substitutions,
+        resolving,
+      )
+    );
   }
-  if (!isGlobalTypeReference(environment.sourceCode, unwrapped, "Record")) return false;
+  if (environment.isBuiltInTypeReference(unwrapped, "Record")) {
+    if (requireNamedMember) return false;
+    const parameters = unwrapped.typeArguments?.params ?? [];
+    return (
+      parameters.length === 2 &&
+      parameters[1] !== undefined &&
+      !isUnknownOrAnyType(parameters[1], environment, substitutions, resolving)
+    );
+  }
 
-  const parameters = unwrapped.typeArguments?.params ?? [];
-  return (
-    parameters.length === 2 && parameters[1] !== undefined && !isUnknownOrAnyType(parameters[1])
+  const resolved = resolveTypeReference(unwrapped, environment, substitutions);
+  if (resolved !== null) {
+    if (resolving.has(resolved.identity)) return false;
+    const nextResolving = new Set(resolving);
+    nextResolving.add(resolved.identity);
+    return isDefinitelyNarrowerRecordType(
+      resolved.type,
+      environment,
+      requireNamedMember,
+      resolved.substitutions,
+      nextResolving,
+    );
+  }
+
+  const name = typeReferenceName(unwrapped);
+  if (name === null || environment.hasTypeParameter(name, unwrapped)) return false;
+  const interfaces = environment.lookupInterfaces(name, unwrapped);
+  return interfaces.some(
+    (declaration) =>
+      (declaration.typeParameters?.params.length ?? 0) === 0 &&
+      declaration.body.body.some(
+        (member) =>
+          member.type !== "TSIndexSignature" ||
+          (!requireNamedMember &&
+            !isUnknownOrAnyType(
+              member.typeAnnotation.typeAnnotation,
+              environment,
+              substitutions,
+              resolving,
+            )),
+      ),
   );
 }
 
@@ -178,6 +276,26 @@ function functionBoundary(node: ESTree.Node): ESTree.Node | null {
   while (current !== null && current.type !== "Program") {
     if (functionBoundaryTypes.has(current.type)) return current;
     current = current.parent;
+  }
+  return null;
+}
+
+function resolvedVariableForIdentifier(
+  scopes: readonly {
+    readonly references: readonly {
+      readonly identifier: ESTree.Node;
+      readonly resolved: Variable | null;
+    }[];
+  }[],
+  identifier: ESTree.IdentifierReference,
+): Variable | null {
+  for (const scope of scopes) {
+    const reference = scope.references.find(
+      (candidate) =>
+        candidate.identifier.start === identifier.start &&
+        candidate.identifier.end === identifier.end,
+    );
+    if (reference !== undefined) return reference.resolved;
   }
   return null;
 }
@@ -192,9 +310,9 @@ function variableDeclarator(variable: Variable): ESTree.VariableDeclarator | nul
 }
 
 function knownValueEvidence(
-  sourceCode: SourceCode,
   expression: ESTree.Expression,
-  environment: TypeEnvironment,
+  scopes: Parameters<typeof resolvedVariableForIdentifier>[0],
+  environment: LexicalTypeEnvironment,
   boundary: ESTree.Node | null,
   visitedVariables: ReadonlySet<Variable>,
 ): KnownValueEvidence | null {
@@ -209,11 +327,39 @@ function knownValueEvidence(
     return { type: null };
   }
 
+  if (unwrapped.type === "ConditionalExpression") {
+    const consequent = knownValueEvidence(
+      unwrapped.consequent,
+      scopes,
+      environment,
+      boundary,
+      visitedVariables,
+    );
+    if (consequent === null) return null;
+    const alternate = knownValueEvidence(
+      unwrapped.alternate,
+      scopes,
+      environment,
+      boundary,
+      visitedVariables,
+    );
+    return alternate === null ? null : { type: null };
+  }
+
+  if (unwrapped.type === "SequenceExpression") {
+    const finalExpression = unwrapped.expressions.at(-1);
+    return finalExpression === undefined
+      ? null
+      : knownValueEvidence(finalExpression, scopes, environment, boundary, visitedVariables);
+  }
+
   if (
     unwrapped.type === "ArrayExpression" ||
     unwrapped.type === "ArrowFunctionExpression" ||
     unwrapped.type === "ClassExpression" ||
     unwrapped.type === "FunctionExpression" ||
+    unwrapped.type === "JSXElement" ||
+    unwrapped.type === "JSXFragment" ||
     unwrapped.type === "NewExpression" ||
     unwrapped.type === "ObjectExpression"
   ) {
@@ -221,7 +367,7 @@ function knownValueEvidence(
   }
 
   if (unwrapped.type !== "Identifier") return null;
-  const variable = resolveValueVariable(sourceCode, unwrapped);
+  const variable = resolvedVariableForIdentifier(scopes, unwrapped);
   if (variable === null || visitedVariables.has(variable)) return null;
 
   const annotatedIdentifier = variable.identifiers.find(
@@ -251,8 +397,8 @@ function knownValueEvidence(
   }
 
   return knownValueEvidence(
-    sourceCode,
     declarator.init,
+    scopes,
     environment,
     boundary,
     new Set([...visitedVariables, variable]),
@@ -261,8 +407,8 @@ function knownValueEvidence(
 
 function widenedBinding(
   variable: Variable,
-  sourceCode: SourceCode,
-  environment: TypeEnvironment,
+  scopes: Parameters<typeof resolvedVariableForIdentifier>[0],
+  environment: LexicalTypeEnvironment,
 ): {
   readonly broadKind: BroadTypeKind;
   readonly evidence: KnownValueEvidence;
@@ -298,8 +444,8 @@ function widenedBinding(
       ? assertedExpression(initializerAssertion)
       : declarator.init;
   const evidence = knownValueEvidence(
-    sourceCode,
     originalExpression,
+    scopes,
     environment,
     boundary,
     new Set([variable]),
@@ -312,13 +458,21 @@ function assertionIsNarrower(
   broadKind: BroadTypeKind,
   evidence: KnownValueEvidence,
   assertedType: ESTree.TSType,
-  environment: TypeEnvironment,
+  environment: LexicalTypeEnvironment,
 ): boolean {
-  if (broadTypeKind(assertedType, environment) !== null) return false;
+  const assertedKind = broadTypeKind(assertedType, environment);
+  if (
+    assertedKind === "top" ||
+    assertedKind === "object" ||
+    assertedKind === "record" ||
+    (broadKind === "open-record" && assertedKind === "open-record")
+  ) {
+    return false;
+  }
   if (broadKind === "top") return true;
   if (typesHaveSameSyntax(sourceText, evidence.type, assertedType)) return true;
   if (broadKind === "object") return isDefinitelyObjectType(assertedType);
-  return isDefinitelyNarrowerRecordType(assertedType, environment);
+  return isDefinitelyNarrowerRecordType(assertedType, environment, broadKind === "open-record");
 }
 
 /** Detect immutable local bindings that erase a known type and are later asserted back to a narrower type. */
@@ -335,16 +489,16 @@ export const noWidenThenAssertRule = defineRule({
     },
   },
   createOnce(context) {
-    let environment: TypeEnvironment | null = null;
+    let scopes: Parameters<typeof resolvedVariableForIdentifier>[0] = [];
+    let environment: LexicalTypeEnvironment | null = null;
 
     const checkAssertion = (node: ESTree.TSAsExpression | ESTree.TSTypeAssertion) => {
-      if (environment === null) return;
       const expression = assertedExpression(node);
       if (expression.type !== "Identifier") return;
 
-      const variable = resolveValueVariable(context.sourceCode, expression);
-      if (variable === null) return;
-      const widened = widenedBinding(variable, context.sourceCode, environment);
+      const variable = resolvedVariableForIdentifier(scopes, expression);
+      if (variable === null || environment === null) return;
+      const widened = widenedBinding(variable, scopes, environment);
       if (
         widened === null ||
         node.start <= widened.declaredAt ||
@@ -368,8 +522,9 @@ export const noWidenThenAssertRule = defineRule({
     };
 
     return {
-      Program() {
-        environment = createTypeEnvironment(context.sourceCode);
+      Program(node) {
+        scopes = context.sourceCode.scopeManager.scopes;
+        environment = createLexicalTypeEnvironment(node, context.sourceCode.visitorKeys);
       },
       TSAsExpression: checkAssertion,
       TSTypeAssertion: checkAssertion,

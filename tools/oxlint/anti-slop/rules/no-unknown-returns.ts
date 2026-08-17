@@ -1,13 +1,8 @@
-import { defineRule } from "@oxlint/plugins";
-
 import type { ESTree } from "@oxlint/plugins";
 
-import {
-  isGlobalTypeReference,
-  resolveTypeAliasApplication,
-  resolveTypeSubstitution,
-  type TypeSubstitutions,
-} from "../shared/scope.ts";
+import { defineRule } from "@oxlint/plugins";
+
+import { createLexicalTypeEnvironment, resolvesToUnknown } from "../shared/type-environment.ts";
 
 type FunctionWithReturnType =
   | ESTree.ArrowFunctionExpression
@@ -32,61 +27,26 @@ export const noUnknownReturnsRule = defineRule({
     },
   },
   createOnce(context) {
-    const resolvesToUnknown = (
-      type: ESTree.TSType,
-      substitutions: TypeSubstitutions = new Map(),
-      visited = new Set<ESTree.TSTypeAliasDeclaration>(),
-      resolvingParameters = new Set<ESTree.TSTypeParameter>(),
-    ): boolean => {
-      if (type.type === "TSUnknownKeyword") return true;
-      if (type.type === "TSParenthesizedType") {
-        return resolvesToUnknown(type.typeAnnotation, substitutions, visited, resolvingParameters);
-      }
-      if (type.type === "TSUnionType") {
-        return type.types.some((member) =>
-          resolvesToUnknown(member, substitutions, visited, resolvingParameters),
-        );
-      }
-      if (type.type !== "TSTypeReference") return false;
-      const substitution = resolveTypeSubstitution(context.sourceCode, type, substitutions);
-      if (substitution !== null) {
-        if (resolvingParameters.has(substitution.parameter)) return false;
-        const nextResolving = new Set(resolvingParameters);
-        nextResolving.add(substitution.parameter);
-        return resolvesToUnknown(substitution.type, substitutions, visited, nextResolving);
-      }
-      if (
-        isGlobalTypeReference(context.sourceCode, type, "Promise") ||
-        isGlobalTypeReference(context.sourceCode, type, "PromiseLike")
-      ) {
-        const value = type.typeArguments?.params[0];
-        return (
-          value !== undefined &&
-          resolvesToUnknown(value, substitutions, visited, resolvingParameters)
-        );
-      }
-      const application = resolveTypeAliasApplication(context.sourceCode, type, substitutions);
-      if (application === null || visited.has(application.alias)) {
-        return false;
-      }
-      const nextVisited = new Set(visited);
-      nextVisited.add(application.alias);
-      return resolvesToUnknown(
-        application.alias.typeAnnotation,
-        application.substitutions,
-        nextVisited,
-        resolvingParameters,
-      );
-    };
+    let environment: ReturnType<typeof createLexicalTypeEnvironment> | null = null;
 
     const checkReturnType = (node: FunctionWithReturnType) => {
+      if (environment === null) return;
       const annotation = node.returnType;
       if (annotation === null || annotation === undefined) return;
-      if (!resolvesToUnknown(annotation.typeAnnotation)) return;
+      if (
+        !resolvesToUnknown(annotation.typeAnnotation, environment, {
+          unwrapPromises: true,
+        })
+      ) {
+        return;
+      }
       context.report({ node: annotation.typeAnnotation, messageId: "unknownReturn" });
     };
 
     return {
+      Program(node) {
+        environment = createLexicalTypeEnvironment(node, context.sourceCode.visitorKeys);
+      },
       ArrowFunctionExpression: checkReturnType,
       FunctionDeclaration: checkReturnType,
       FunctionExpression: checkReturnType,

@@ -1,93 +1,45 @@
 import { requireSafetyCommentForTypeAssertionRule } from "../rules/require-safety-comment-for-type-assertion.ts";
-import { testRule } from "./rule-tester.ts";
+import { ruleTester } from "./rule-tester.ts";
 
-testRule("require-safety-comment-for-type-assertion", requireSafetyCommentForTypeAssertionRule, {
-  valid: [
-    `
-        // SAFETY: The decoder established the string contract.
-        const value = source as string;
-      `,
-    `
-        // SAFETY: The preceding decoder established the boolean contract.
-        if (value as boolean) consume(value);
-      `,
-    `
-        // SAFETY: The decoder established the string contract.
-        const value = (() => source as string)();
-      `,
-    `
-        function read() {
-          // SAFETY: The decoder established the string contract.
-          return (() => source as string)();
-        }
-      `,
-    `
-        const value = (function () {
-          // SAFETY: The decoder established the string contract.
-          return source as string;
-        })();
-      `,
-  ],
-  invalid: [
-    {
-      code: `
-          // SAFETY: The function registration is controlled by this module.
-          function consume(value: unknown) {
-            if (value as boolean) return;
-          }
-        `,
-      errors: [{ messageId: "missingSafetyComment" }],
-    },
-    {
-      code: `
-          // SAFETY: The class registration is controlled by this module.
-          class Consumer {
-            [value as string]() {}
-          }
-        `,
-      errors: [{ messageId: "missingSafetyComment" }],
-    },
-    {
-      code: `
-          // SAFETY: The function registration is controlled by this module.
-          function consume(value = source as string) {}
-        `,
-      errors: [{ messageId: "missingSafetyComment" }],
-    },
-    {
-      code: `
-          // SAFETY: The callback registration is controlled by this module.
-          const callback = () => source as string;
-        `,
-      errors: [{ messageId: "missingSafetyComment" }],
-    },
-    {
-      code: `
-          // SAFETY: The callback registration is controlled by this module.
-          const callback = () => () => source as string;
-        `,
-      errors: [{ messageId: "missingSafetyComment" }],
-    },
-    {
-      code: `
-          // SAFETY: The callback registration is controlled by this module.
-          const callback = function (value = source as string) {};
-        `,
-      errors: [{ messageId: "missingSafetyComment" }],
-    },
-    {
-      code: `
-          // SAFETY: The invocation is controlled by this module.
-          const value = (function (input = source as string) { return input; })();
-        `,
-      errors: [{ messageId: "missingSafetyComment" }],
-    },
-    {
-      code: `
-          // SAFETY: The class registration is controlled by this module.
-          const Model = class extends (source as Constructor) {};
-        `,
-      errors: [{ messageId: "missingSafetyComment" }],
-    },
-  ],
-});
+const error = { messageId: "missingSafetyComment" };
+
+ruleTester.run(
+  "anti-slop/require-safety-comment-for-type-assertion",
+  requireSafetyCommentForTypeAssertionRule,
+  {
+    valid: [
+      "function check(value: unknown) { // SAFETY: Validation established the string invariant.\nif (value as string) return true; return false; }",
+      "function check(value: unknown) { inspect();\n// SAFETY: Validation established the string invariant.\nreturn value as string; }",
+      "function check(value: unknown) { return /* SAFETY: Validation established the string invariant. */ value as string; }",
+      "// SAFETY: Validation established the owner contract.\nexport const value = input as Owner;",
+      "class Registry { // SAFETY: Validation established the member name.\n[input as string](): void {} }",
+      "const registry = { // SAFETY: Validation established the property name.\n[input as string]: value };",
+    ],
+    invalid: [
+      {
+        code: "// SAFETY: The function validates its result.\nfunction check(value: unknown) { if (value as string) return true; return false; }",
+        errors: [error],
+      },
+      {
+        code: "function check(value: unknown) { // SAFETY: The branch validates its result.\nif (ready) { return value as string; } return ''; }",
+        errors: [error],
+      },
+      {
+        code: "function check(value: unknown) { inspect(); // SAFETY: Validation established the string invariant.\nreturn value as string; }",
+        errors: [error],
+      },
+      {
+        code: "const unrelated = inspect(); // SAFETY: Validation established the owner contract.\nexport const value = input as Owner;",
+        errors: [error],
+      },
+      {
+        code: "class Registry { previous(): void {} // SAFETY: Validation established the member name.\n[input as string](): void {} }",
+        errors: [error],
+      },
+      {
+        code: "const registry = { previous: true, // SAFETY: Validation established the property name.\n[input as string]: value };",
+        errors: [error],
+      },
+    ],
+  },
+);

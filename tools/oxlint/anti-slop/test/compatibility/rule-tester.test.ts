@@ -1,5 +1,5 @@
-import { noReflectApplyRule } from "../rules/no-reflect-apply.ts";
-import { noReflectGetRule } from "../rules/no-reflect-get.ts";
+import { noReflectApplyRule } from "../../rules/no-reflect-apply.ts";
+import { noReflectGetRule } from "../../rules/no-reflect-get.ts";
 import { testRule } from "./rule-tester.ts";
 
 testRule("no-reflect-get", noReflectGetRule, {

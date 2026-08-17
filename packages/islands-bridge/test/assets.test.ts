@@ -792,7 +792,7 @@ async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
 }
 
-async function expectPending(promise: Promise<unknown>): Promise<void> {
+async function expectPending<Value>(promise: Promise<Value>): Promise<void> {
   let settled = false;
   void promise.finally(() => {
     settled = true;

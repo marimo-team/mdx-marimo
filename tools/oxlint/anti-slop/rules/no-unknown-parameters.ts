@@ -1,5 +1,8 @@
-import { defineRule } from "@oxlint/plugins";
 import type { ESTree } from "@oxlint/plugins";
+
+import { defineRule } from "@oxlint/plugins";
+
+import { createLexicalTypeEnvironment, resolvesToUnknown } from "../shared/type-environment.ts";
 
 type Parameter = ESTree.ParamPattern;
 type ParameterOwner =
@@ -53,10 +56,21 @@ export const noUnknownParametersRule = defineRule({
     },
   },
   createOnce(context) {
+    let environment: ReturnType<typeof createLexicalTypeEnvironment> | null = null;
+
     const checkParameters = (node: ParameterOwner) => {
+      if (environment === null) return;
       for (const parameter of node.params) {
         const annotation = parameterAnnotation(parameter);
-        if (annotation?.typeAnnotation.type !== "TSUnknownKeyword") continue;
+        if (
+          annotation === null ||
+          annotation === undefined ||
+          !resolvesToUnknown(annotation.typeAnnotation, environment, {
+            unwrapPromises: true,
+          })
+        ) {
+          continue;
+        }
         const name = parameterName(parameter, context.sourceCode.getText(parameter));
         if (name === "cause") continue;
         context.report({
@@ -68,6 +82,9 @@ export const noUnknownParametersRule = defineRule({
     };
 
     return {
+      Program(node) {
+        environment = createLexicalTypeEnvironment(node, context.sourceCode.visitorKeys);
+      },
       ArrowFunctionExpression: checkParameters,
       FunctionDeclaration: checkParameters,
       FunctionExpression: checkParameters,

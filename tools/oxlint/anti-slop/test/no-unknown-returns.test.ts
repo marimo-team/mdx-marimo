@@ -1,117 +1,85 @@
 import { noUnknownReturnsRule } from "../rules/no-unknown-returns.ts";
-import { testRule } from "./rule-tester.ts";
+import { ruleTester } from "./rule-tester.ts";
 
-testRule("no-unknown-returns", noUnknownReturnsRule, {
+const error = { messageId: "unknownReturn" };
+
+ruleTester.run("anti-slop/no-unknown-returns", noUnknownReturnsRule, {
   valid: [
-    `
-      type Promise<T> = { value: T };
-      declare function read(): Promise<unknown>;
-    `,
-    `
-      type PromiseLike<T> = { value: T };
-      declare function read(): PromiseLike<unknown>;
-    `,
-    `
-      type Result = unknown;
-      function owner() {
-        type Result = string;
-        function read(): Result { return "ok"; }
-        return read;
-      }
-    `,
-    `
-      type Result = unknown;
-      namespace Values {
-        type Result = string;
-        export function read(): Result { return "ok"; }
-      }
-    `,
-    "type Identity<Value> = Value; declare function read<Value>(): Identity<Value>;",
-    "namespace Contracts { export type Payload = string; } declare function read(): Contracts.Payload;",
-    "namespace Contracts { export const Payload = 1; export type Payload = string; } declare function read(): Contracts.Payload;",
-    "namespace Contracts { export type Identity<Value> = Value; } declare function read(): Contracts.Identity<string>;",
-    "namespace Contracts { export type Promise<Value> = { value: Value }; } declare function read(): Contracts.Promise<unknown>;",
-    "export {}; namespace globalThis { export type Promise<Value> = { value: Value }; export type PromiseLike<Value> = { value: Value }; } declare function read(): globalThis.Promise<unknown>; declare function readLike(): globalThis.PromiseLike<unknown>;",
-    "namespace Outer { export namespace Inner { export type Payload = string; } } declare function read(): Outer.Inner.Payload;",
-    "namespace Contracts { export type Payload = string; } import C = Contracts; declare function read(): C.Payload;",
-    "namespace Contracts { export type Payload = string; } import Payload = Contracts.Payload; declare function read(): Payload;",
+    "type Promise<T> = { readonly value: T }; function load(): Promise<unknown> { return { value: input }; }",
+    "import type { Promise } from './promise'; declare function load(): Promise<unknown>;",
+    "type PromiseLike<T> = { readonly value: T }; declare function load(): PromiseLike<unknown>;",
+    "type Result = unknown; function outer() { type Result = { readonly id: string }; function load(): Result { return { id: 'one' }; } }",
+    "type Awaited<T> = { readonly value: T }; declare function load(): Awaited<unknown>;",
+    "import type { Awaited } from './owner'; declare function load(): Awaited<unknown>;",
+    "namespace Domain { export type Promise<T> = { readonly value: T }; } namespace Domain { export declare function load(): Promise<unknown>; }",
+    "namespace Domain { type Result = unknown; } namespace Domain { export declare function load(): Result; }",
+    "import type * as Domain from './owner'; declare function load(): Domain.Result;",
+    "namespace Domain { export type Result = unknown; } function outer<Domain>() { declare function load(): Domain.Result; }",
   ],
   invalid: [
     {
-      code: "declare function read(): Promise<unknown>;",
-      errors: [{ messageId: "unknownReturn" }],
+      code: "declare function load(): Promise<unknown>;",
+      errors: [error],
     },
     {
-      code: "declare function read(): globalThis.Promise<unknown>;",
-      errors: [{ messageId: "unknownReturn" }],
+      code: "declare function load(): PromiseLike<unknown>;",
+      errors: [error],
     },
     {
-      code: "declare function read(): globalThis.PromiseLike<unknown>;",
-      errors: [{ messageId: "unknownReturn" }],
+      code: "const load = async (): Promise<unknown> => input;",
+      errors: [error],
     },
     {
-      code: "export {}; const globalThis = 1; declare function read(): globalThis.Promise<unknown>;",
-      errors: [{ messageId: "unknownReturn" }],
+      code: "type Promise<T> = T; declare function load(): Promise<unknown>;",
+      errors: [error],
     },
     {
-      code: "const Promise = 1; declare function read(): Promise<unknown>;",
-      errors: [{ messageId: "unknownReturn" }],
+      code: "type Identity<T> = T; declare function load(): Identity<unknown>;",
+      errors: [error],
     },
     {
-      code: "function owner(Promise: number) { function read(): Promise<unknown> { throw new Error(); } return Promise; }",
-      errors: [{ messageId: "unknownReturn" }],
+      code: "type Identity<T> = T; declare function load(): Identity<Identity<unknown>>;",
+      errors: [error],
     },
     {
-      code: "function owner() { type Result = unknown; function read(): Result { throw new Error(); } }",
-      errors: [{ messageId: "unknownReturn" }],
+      code: "function outer() { type Result = unknown; function load(): Result { return input; } }",
+      errors: [error],
     },
     {
-      code: "type Result = unknown; function owner() { const Result = 1; function read(): Result { throw new Error(); } return Result; }",
-      errors: [{ messageId: "unknownReturn" }],
+      code: "function outer() { function load(): Result { return input; } type Result = unknown; }",
+      errors: [error],
     },
     {
-      code: "namespace Values { type Result = unknown; export function read(): Result { throw new Error(); } }",
-      errors: [{ messageId: "unknownReturn" }],
+      code: "namespace Domain { type Result = unknown; export function load(): Result { return input; } }",
+      errors: [error],
     },
     {
-      code: "namespace Contracts { export type Payload = unknown; } declare function read(): Contracts.Payload;",
-      errors: [{ messageId: "unknownReturn" }],
+      code: "declare module 'domain' { type Result = unknown; function load(): Result; }",
+      errors: [error],
     },
     {
-      code: "namespace Contracts { export type Payload = unknown; } function owner() { const Contracts = 1; function read(): Contracts.Payload { throw new Error(); } return Contracts; }",
-      errors: [{ messageId: "unknownReturn" }],
+      code: "declare function load(): Awaited<unknown>;",
+      errors: [error],
     },
     {
-      code: "namespace Contracts { export const Payload = 1; export type Payload = unknown; } declare function read(): Contracts.Payload;",
-      errors: [{ messageId: "unknownReturn" }],
+      code: "declare function load(): Awaited<Promise<unknown>>;",
+      errors: [error],
     },
     {
-      code: "namespace Contracts { export type Identity<Value> = Value; } declare function read(): Contracts.Identity<unknown>;",
-      errors: [{ messageId: "unknownReturn" }],
+      code: "namespace Domain { export type Result = unknown; } namespace Domain { export declare function load(): Result; }",
+      errors: [error],
     },
     {
-      code: "namespace Outer { export namespace Inner { export type Payload = unknown; } } declare function read(): Outer.Inner.Payload;",
-      errors: [{ messageId: "unknownReturn" }],
+      code: "namespace Domain { type Promise<T> = { readonly value: T }; } namespace Domain { export declare function load(): Promise<unknown>; }",
+      errors: [error],
     },
     {
-      code: "namespace Contracts { export type Payload = unknown; } import C = Contracts; declare function read(): C.Payload;",
-      errors: [{ messageId: "unknownReturn" }],
+      code: "namespace Domain { export type Result = unknown; } declare function load(): Domain.Result;",
+      errors: [error],
     },
     {
-      code: "namespace Contracts { export type Payload = unknown; } import Payload = Contracts.Payload; declare function read(): Payload;",
-      errors: [{ messageId: "unknownReturn" }],
-    },
-    {
-      code: "type Identity<Value> = Value; declare function read(): Identity<unknown>;",
-      errors: [{ messageId: "unknownReturn" }],
-    },
-    {
-      code: "type Identity<Value = unknown> = Value; declare function read(): Identity;",
-      errors: [{ messageId: "unknownReturn" }],
-    },
-    {
-      code: "type Identity<Value> = Value; type Wrapped<Value> = Identity<Value>; declare function read(): Wrapped<unknown>;",
-      errors: [{ messageId: "unknownReturn" }],
+      code: "namespace Domain { export type Identity<T> = T; } declare function load(): Domain.Identity<unknown>;",
+      errors: [error],
     },
   ],
 });

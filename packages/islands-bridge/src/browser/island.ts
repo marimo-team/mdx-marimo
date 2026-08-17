@@ -5,6 +5,7 @@ import {
   applyMarimoTheme,
   installMarimoThemeBridge,
   refreshMarimoThemeBridge,
+  type MarimoThemeBridgeOptions,
   type MarimoThemeMode,
   type MarimoThemeResolver,
 } from "./theme";
@@ -30,11 +31,6 @@ export type MarimoIslandMount = (
   payload: MarimoPageCellPayload,
   options?: MountMarimoIslandOptions,
 ) => () => void;
-
-type MarimoThemeBridgeOptions = {
-  theme?: MarimoThemeMode;
-  themeResolver?: MarimoThemeResolver;
-};
 
 type DocumentPlatform = {
   document?: Document;

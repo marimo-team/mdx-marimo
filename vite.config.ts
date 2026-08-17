@@ -1,23 +1,11 @@
 import { defineConfig } from "vite-plus";
 
-const agentToolIgnorePatterns = [
-  ".agent/**",
-  ".agents/**",
-  ".claude/**",
-  ".codex/**",
-  ".continue/**",
-  ".cursor/**",
-  ".gemini/**",
-  ".opencode/**",
-  ".pi/**",
-  ".roo/**",
-  ".windsurf/**",
-] as const;
+import { antiSlopIgnorePatterns, antiSlopRules } from "./tools/oxlint/anti-slop/preset.ts";
 
 export default defineConfig({
   fmt: {
     ignorePatterns: [
-      ...agentToolIgnorePatterns,
+      ...antiSlopIgnorePatterns,
       "apps/docs/.next/**",
       "apps/docs/.output/**",
       "apps/docs/.source/**",
@@ -31,12 +19,11 @@ export default defineConfig({
       "examples/*/build/**",
       "examples/*/dist/**",
       "packages/*/dist/**",
-      "tools/oxlint/anti-slop/**",
     ],
   },
   lint: {
     ignorePatterns: [
-      ...agentToolIgnorePatterns,
+      ...antiSlopIgnorePatterns,
       "apps/docs/.output/**",
       "apps/docs/.source/**",
       "apps/docs/src/routeTree.gen.ts",
@@ -48,28 +35,15 @@ export default defineConfig({
       "examples/*/build/**",
       "examples/*/dist/**",
       "packages/*/dist/**",
-      "tools/oxlint/anti-slop/**",
     ],
     jsPlugins: [{ name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" }],
     options: {
+      denyWarnings: true,
+      reportUnusedDisableDirectives: "error",
       typeAware: true,
     },
     rules: {
-      "anti-slop/no-chained-type-assertions": "error",
-      "anti-slop/no-conditional-empty-object-spread": "error",
-      "anti-slop/no-known-value-widening": "error",
-      "anti-slop/no-module-mocking": "error",
-      "anti-slop/no-object-parameters": "error",
-      "anti-slop/no-reflect-apply": "error",
-      "anti-slop/no-reflect-get": "error",
-      "anti-slop/no-runtime-typeof": "error",
-      "anti-slop/no-structural-placeholder-names": "error",
-      "anti-slop/no-unknown-parameters": "error",
-      "anti-slop/no-unknown-returns": "error",
-      "anti-slop/no-unknown-type-aliases": "error",
-      "anti-slop/no-unsafe-dictionary-type": "error",
-      "anti-slop/no-widen-then-assert": "error",
-      "anti-slop/require-safety-comment-for-type-assertion": "error",
+      ...antiSlopRules,
     },
     overrides: [
       {
