@@ -14,7 +14,7 @@ concurrency:
 jobs:
   build:
     name: Build release artifact
-    runs-on: ubuntu-p-small
+    runs-on: "${{ vars.CI_RUNNER_SMALL || 'ubuntu-latest' }}"
     outputs:
       node-version: ${{ steps.node-version.outputs.version }}
       npm_tag: ${{ steps.release.outputs.npm_tag }}
@@ -72,7 +72,7 @@ jobs:
   publish:
     name: Publish to npm
     needs: build
-    runs-on: ubuntu-p-small
+    runs-on: "${{ vars.CI_RUNNER_SMALL || 'ubuntu-latest' }}"
     environment:
       name: npm
       url: https://www.npmjs.com/org/marimo-team
@@ -100,7 +100,7 @@ jobs:
   release-notes:
     name: Update release notes
     needs: publish
-    runs-on: ubuntu-p-small
+    runs-on: "${{ vars.CI_RUNNER_SMALL || 'ubuntu-latest' }}"
     permissions:
       contents: write
 
