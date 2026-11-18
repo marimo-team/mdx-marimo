@@ -39,7 +39,9 @@ describe("mountMarimoIsland", () => {
       marimoHost: "publisher",
       marimoThemeMode: "dark",
     });
-    expect(host.innerHTML).toBe(staticPayload.cell.html);
+    expect(host.innerHTML).toBe(
+      `<div class="marimo-island-scroll">${staticPayload.cell.html}</div>`,
+    );
     expect(dependencies.applyMarimoTheme).toHaveBeenCalledWith(host, "dark", undefined);
     expect(dependencies.installMarimoThemeBridge).toHaveBeenCalledWith(host, {
       theme: "dark",

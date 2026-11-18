@@ -1,26 +1,31 @@
 :where(.marimo-island-host) {
-  display: block;
+  display: flow-root;
   box-sizing: border-box;
   margin-block: var(--_marimo-island-margin-block);
   max-width: 100%;
   min-width: 0;
+}
+
+:where(.marimo-island-host) > :where(.marimo-island-scroll) {
+  /* Reserve space for ink overflow without changing the island spacing. */
+  padding-block: 1em;
+  margin-block: -1em;
   overflow-x: auto;
 }
 
-:where(.marimo-island-host) > :first-child {
+:where(.marimo-island-host) > :where(.marimo-island-scroll) > :first-child {
   margin-top: 0;
 }
 
-:where(.marimo-island-host) > :last-child {
+:where(.marimo-island-host) > :where(.marimo-island-scroll) > :last-child {
   margin-bottom: 0;
 }
 
 :where(.marimo-island-host) :where(marimo-island, marimo-cell-output) {
   max-width: 100%;
   min-width: 0;
-  overflow-x: auto;
 }
 
-:where(.marimo-island-host) > marimo-island.marimo {
+:where(.marimo-island-host) > :where(.marimo-island-scroll) > marimo-island.marimo {
   display: contents;
 }

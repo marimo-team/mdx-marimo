@@ -99,7 +99,7 @@ function mountMarimoIslandWithDependencies(
     delete host.dataset.marimoAppId;
   }
   host.dataset.marimoCellIndex = String(payload.cell.index);
-  host.innerHTML = payload.cell.html;
+  host.innerHTML = `<div class="marimo-island-scroll">${payload.cell.html}</div>`;
 
   if (!payload.app || !dependencies.hasConfirmedSoftNavigationAssets(payload.app)) {
     releaseNavigation = dependencies.retainDocumentNavigation();
